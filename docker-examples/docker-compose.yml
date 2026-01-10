@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. MCP Gateway (The Docker Bridge)
+  # ---------------------------------------------------------------------------
+  # This service exposes the Docker MCP capabilities to your agents.
+  # Ensure you have the Docker MCP extension (or CLI plugin) installed/configured.
+  mcp-gateway:
+    image: docker:latest
+    container_name: mcp-gateway
+    command: >
+      sh -c "
+        apk add --no-cache curl &&
+        docker mcp gateway run
+          --servers=duckduckgo,filesystem
+          --listen=0.0.0.0:8000
+      "
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount your MCP configuration if you have one
+      # - ./mcp-config:/root/.docker/mcp
+    networks:
+      - mcp-network
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # 2. Example Client (Optional)
+  # ---------------------------------------------------------------------------
+  # Connect your agent container to the gateway via HTTP
+  # agent-app:
+  #   image: python:3.10-slim
+  #   depends_on:
+  #     mcp-gateway:
+  #       condition: service_healthy
+  #   environment:
+  #     - MCP_GATEWAY_URL=http://mcp-gateway:8000
+
+networks:
+  mcp-network:
+    driver: bridge

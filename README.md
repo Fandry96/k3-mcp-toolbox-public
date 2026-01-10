@@ -1,30 +1,92 @@
 # K3 MCP Toolbox & Logicware
 
-## Overview
+> **"Middleware for the Agentic Era."**
 
-This repository contains the open-source release of the Model Context Protocol (MCP) tools from the K3 Firehose project.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP Ready](https://img.shields.io/badge/MCP-Ready-green.svg)](https://modelcontextprotocol.io)
+[![Status: Beta](https://img.shields.io/badge/Status-Beta-orange.svg)]()
 
-### Included Packages
+Welcome to the open-source release of the **K3 MCP Toolbox** and **Antigravity Logicware**. These are the core tools we use internally to power our Agentic IDE on Windows, extracted into a standalone package for the community.
 
-#### 1. [K3 MCP Toolbox](./k3-mcp-toolbox)
+## 📦 What's Included?
 
-A collection of essential MCP tools for Windows/Python environments.
+This repository houses two distinct packages:
 
-- **Server**: FastMCP-based server implementation.
-- **Tools**: Process management (`kill_zombies`), Clipboard access, and System diagnostics.
-- **Bridge**: Chrome DevTools Protocol adapter.
+### 1. [K3 MCP Toolbox](./k3-mcp-toolbox)
 
-#### 2. [Antigravity Logicware](./antigravity-logicware)
+**A Windows-native MCP Server implementation.**
 
-Advanced cognitive protocols for AI agents.
+- **FastMCP Server**: Lightweight, async server base.
+- **Process Management**: `kill_zombies` for cleaning stuck processes (Selenium/Playwright).
+- **System Bridge**: Clipboard access, local file ops, and more.
 
-- **Sequential Thinking**: A port of the "Chain of Thought" protocol for complex problem solving.
-- **MRL Indexer**: Matryoshka Representation Learning for efficient vector retrieval.
+### 2. [Antigravity Logicware](./antigravity-logicware)
 
-## Installation
+**Cognitive protocols for smarter agents.**
 
-See the `README.md` in each subdirectory for specific installation instructions.
+- **Sequential Thinking**: Python implementation of Protocol 310 (Chain of Thought).
+- **MRL Indexer**: Matryoshka Representation Learning for efficient local search.
+- **Three-Brain Tournament**: Framework for adversarial decision making.
 
-## License
+### 3. [Docker MCP Gateway](./docker-examples)
 
-MIT License
+**Run MCP Servers anywhere.**
+
+- **Dynamic Loading**: Hot-load tools without restarting the host.
+- **Isolation**: Run tools in clean, reproducible containers.
+
+---
+
+## 🚀 Getting Started
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/Fandry96/k3-mcp-toolbox-public.git
+cd k3-mcp-toolbox-public
+
+# Install dependencies (choose your flavor)
+pip install -r k3-mcp-toolbox/requirements.txt
+```
+
+### Configuration (Claude Desktop)
+
+Add the following to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "k3-toolbox": {
+      "command": "python",
+      "args": ["/absolute/path/to/k3-mcp-toolbox-public/k3-mcp-toolbox/server.py"]
+    }
+  }
+}
+```
+
+---
+
+## 🐳 Docker Usage
+
+To run the MCP Gateway with Docker:
+
+```bash
+cd docker-examples
+docker-compose up -d
+```
+
+See [docker-examples/README.md](./docker-examples/README.md) not created yet? wait. Just check the folder structure.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please see the `CONTRIBUTING.md` file in each sub-package for specific guidelines.
+
+- **Hygiene**: Type hints are mandatory.
+- **Testing**: Ensure all tests pass before submitting a PR.
+
+---
+
+*Maintained by Fandry96 & The Antigravity Team*
