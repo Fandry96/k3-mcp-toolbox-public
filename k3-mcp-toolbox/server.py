@@ -9,7 +9,11 @@ from typing import Optional
 # Use Pathlib for robust cross-platform path handling
 BASE_DIR = Path(__file__).parent.resolve()
 SRC_DIR = BASE_DIR / "src"
+
+# Add Logicware to python path (Sibling Directory)
+LOGICWARE_DIR = BASE_DIR.parent / "antigravity-logicware" / "src"
 sys.path.append(str(SRC_DIR))
+sys.path.append(str(LOGICWARE_DIR))
 
 # Initialize Server
 mcp = FastMCP("k3-toolbox")
@@ -21,20 +25,14 @@ _THOUGHT_ENGINE = None
 
 # --- IMPORTS (Resilient) ---
 try:
-    from sequential_thinking import SequentialThinking
+    from antigravity import SequentialThinking, MatryoshkaIndexer
 
     ST_AVAILABLE = True
-except ImportError:
-    ST_AVAILABLE = False
-    sys.stderr.write("⚠️ Warning: SequentialThinking not found in src/\n")
-
-try:
-    from k3_mrl_indexer import MatryoshkaIndexer
-
     MRL_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    ST_AVAILABLE = False
     MRL_AVAILABLE = False
-    sys.stderr.write("⚠️ Warning: k3_mrl_indexer not found in src/\n")
+    sys.stderr.write(f"⚠️ Warning: Logicware Import Failed: {e}\n")
 
 
 # --- TOOL 1: OPS (Windows) ---

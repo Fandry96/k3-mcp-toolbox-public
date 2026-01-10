@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "antigravity-logicware"
+version = "0.1.0"
+description = "Cognitive protocols for Agentic AI"
+authors = [
+  { name="Fandry96", email="admin@k3fam.com" },
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "google-genai",
+    "python-dotenv"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Fandry96/k3-mcp-toolbox-public"
