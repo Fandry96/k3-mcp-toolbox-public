@@ -276,9 +276,9 @@ class MatryoshkaIndexer:
                     # but let's default to the function's default (256) for cost safety first
                     # UNLESS user explicitly asked for PhD precision.
                     # The implementation_plan authorized "Brute Force" on source code.
-                    # Let's use window_size=128 (Logic Block) for now to be safe on storage
+                    # [UPDATED] Using window_size=16 (PhD Spec) as authorized.
                     # ReFRAG default is 256.
-                    file_chunks = slice_to_refrag(raw_text, window_size=128, stride=64)
+                    file_chunks = slice_to_refrag(raw_text, window_size=16, stride=8)
                     if len(file_chunks) > 0:
                         # Log only first time or verbose
                         pass
