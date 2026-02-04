@@ -41,6 +41,8 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+        self._matrix_cache = None
+        self._paths_cache = None
         self.load_index()
 
     def load_index(self):
@@ -68,6 +70,10 @@ class MatryoshkaIndexer:
                 self.index = {}
         else:
             print(f"[SYSTEM] No index found at {self.index_file}. Initializing new.")
+
+        # Invalidate cache
+        self._matrix_cache = None
+        self._paths_cache = None
 
     def save_index(self):
         """Atomic binary save to prevent corruption."""
@@ -338,6 +344,9 @@ class MatryoshkaIndexer:
                             "snippet": snippet,
                         }
                         self._unsaved_changes += 1
+                        # Invalidate cache
+                        self._matrix_cache = None
+                        self._paths_cache = None
                         print(f"[INDEXED] {path.split('::')[-1]}")
 
                     if self._unsaved_changes >= SAVE_INTERVAL:
@@ -368,8 +377,12 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            if self._matrix_cache is None or self._paths_cache is None:
+                self._paths_cache = list(self.index.keys())
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
+
+            paths = self._paths_cache
+            matrix = self._matrix_cache
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
