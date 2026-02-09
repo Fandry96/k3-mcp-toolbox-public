@@ -41,6 +41,9 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+        # Cache for search optimization
+        self._matrix_cache = None
+        self._paths_cache = None
         self.load_index()
 
     def load_index(self):
@@ -68,6 +71,22 @@ class MatryoshkaIndexer:
                 self.index = {}
         else:
             print(f"[SYSTEM] No index found at {self.index_file}. Initializing new.")
+        self._invalidate_cache()
+
+    def _invalidate_cache(self):
+        """Invalidates the matrix cache when the index changes."""
+        self._matrix_cache = None
+        self._paths_cache = None
+
+    def _ensure_cache(self):
+        """Rebuilds the matrix cache if invalid."""
+        if self._matrix_cache is None or self._paths_cache is None:
+            if not self.index:
+                self._matrix_cache = np.array([])
+                self._paths_cache = []
+            else:
+                self._paths_cache = list(self.index.keys())
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
 
     def save_index(self):
         """Atomic binary save to prevent corruption."""
@@ -338,6 +357,7 @@ class MatryoshkaIndexer:
                             "snippet": snippet,
                         }
                         self._unsaved_changes += 1
+                        self._invalidate_cache()
                         print(f"[INDEXED] {path.split('::')[-1]}")
 
                     if self._unsaved_changes >= SAVE_INTERVAL:
@@ -368,8 +388,12 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            self._ensure_cache()
+            paths = self._paths_cache
+            matrix = self._matrix_cache
+
+            if len(paths) == 0:
+                return []
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
