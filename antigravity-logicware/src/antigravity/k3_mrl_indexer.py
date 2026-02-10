@@ -41,7 +41,14 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+        self._matrix_cache = None
+        self._paths_cache = None
         self.load_index()
+
+    def _invalidate_cache(self):
+        """Invalidates the matrix and paths cache."""
+        self._matrix_cache = None
+        self._paths_cache = None
 
     def load_index(self):
         """Loads binary pickle index for speed."""
@@ -68,6 +75,7 @@ class MatryoshkaIndexer:
                 self.index = {}
         else:
             print(f"[SYSTEM] No index found at {self.index_file}. Initializing new.")
+        self._invalidate_cache()
 
     def save_index(self):
         """Atomic binary save to prevent corruption."""
@@ -231,6 +239,7 @@ class MatryoshkaIndexer:
         """
         Main execution loop.
         """
+        self._invalidate_cache()
         files = self.walk_files()
         if limit > 0:
             print(f"[SYSTEM] Limiting to first {limit} files.")
@@ -344,7 +353,18 @@ class MatryoshkaIndexer:
                         self.save_index()
 
         self.save_index()
+        self._invalidate_cache()
         print("[SYSTEM] Indexing Complete.")
+
+    def _get_matrix_and_paths(self):
+        """Lazily builds and caches the matrix and paths list."""
+        if self._matrix_cache is None or self._paths_cache is None:
+            self._paths_cache = list(self.index.keys())
+            if not self._paths_cache:
+                self._matrix_cache = np.array([])
+            else:
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
+        return self._paths_cache, self._matrix_cache
 
     def search(self, query: str, top_k: int = 5):
         """
@@ -368,8 +388,10 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            paths, matrix = self._get_matrix_and_paths()
+
+            if matrix.size == 0:
+                return []
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
