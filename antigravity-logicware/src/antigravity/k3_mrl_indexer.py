@@ -41,7 +41,27 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+        self._matrix_cache = None
+        self._paths_cache = None
         self.load_index()
+
+    def _invalidate_cache(self):
+        """Invalidate the matrix and paths cache."""
+        self._matrix_cache = None
+        self._paths_cache = None
+
+    def _get_matrix_and_paths(self) -> Tuple[np.ndarray, List[str]]:
+        """
+        Returns cached matrix and paths, rebuilding if necessary.
+        """
+        if self._matrix_cache is None or self._paths_cache is None:
+            self._paths_cache = list(self.index.keys())
+            # Ensure we have data to stack, though search() checks for empty index first
+            if self.index:
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
+            else:
+                self._matrix_cache = np.array([])
+        return self._matrix_cache, self._paths_cache
 
     def load_index(self):
         """Loads binary pickle index for speed."""
@@ -49,6 +69,8 @@ class MatryoshkaIndexer:
             try:
                 with open(self.index_file, "rb") as f:
                     self.index = pickle.load(f)
+
+                self._invalidate_cache()
 
                 # Validation check
                 if self.index and isinstance(
@@ -66,6 +88,7 @@ class MatryoshkaIndexer:
             except Exception as e:
                 print(f"[WARN] Index corrupt or incompatible ({e}). Starting fresh.")
                 self.index = {}
+                self._invalidate_cache()
         else:
             print(f"[SYSTEM] No index found at {self.index_file}. Initializing new.")
 
@@ -337,6 +360,7 @@ class MatryoshkaIndexer:
                             "hash": txt_hash,
                             "snippet": snippet,
                         }
+                        self._invalidate_cache()
                         self._unsaved_changes += 1
                         print(f"[INDEXED] {path.split('::')[-1]}")
 
@@ -368,8 +392,7 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            matrix, paths = self._get_matrix_and_paths()
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
