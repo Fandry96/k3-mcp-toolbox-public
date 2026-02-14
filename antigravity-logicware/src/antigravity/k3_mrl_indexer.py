@@ -41,10 +41,14 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+        self._matrix_cache = None
+        self._paths_cache = None
         self.load_index()
 
     def load_index(self):
         """Loads binary pickle index for speed."""
+        self._matrix_cache = None
+        self._paths_cache = None
         if self.index_file.exists():
             try:
                 with open(self.index_file, "rb") as f:
@@ -338,6 +342,9 @@ class MatryoshkaIndexer:
                             "snippet": snippet,
                         }
                         self._unsaved_changes += 1
+                        # Invalidate cache
+                        self._matrix_cache = None
+                        self._paths_cache = None
                         print(f"[INDEXED] {path.split('::')[-1]}")
 
                     if self._unsaved_changes >= SAVE_INTERVAL:
@@ -345,6 +352,16 @@ class MatryoshkaIndexer:
 
         self.save_index()
         print("[SYSTEM] Indexing Complete.")
+
+    def _get_matrix_and_paths(self):
+        """Lazy-loads and caches the vector matrix."""
+        if self._matrix_cache is None or self._paths_cache is None:
+            self._paths_cache = list(self.index.keys())
+            if self._paths_cache:
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
+            else:
+                self._matrix_cache = np.array([])
+        return self._matrix_cache, self._paths_cache
 
     def search(self, query: str, top_k: int = 5):
         """
@@ -368,8 +385,10 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            matrix, paths = self._get_matrix_and_paths()
+
+            if matrix.size == 0:
+                return []
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
