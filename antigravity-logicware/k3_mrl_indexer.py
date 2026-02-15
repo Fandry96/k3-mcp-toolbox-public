@@ -22,6 +22,7 @@ DEFAULT_MODEL = "models/text-embedding-004"  # SOTA (Dec 2025)
 BATCH_SIZE = 5  # Increased batch size for throughput
 MAX_WORKERS = 4  # Parallel API calls
 SAVE_INTERVAL = 20  # Auto-save every N updates
+DEFAULT_DIMENSION = 768
 
 
 class MatryoshkaIndexer:
@@ -40,10 +41,14 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+        self._matrix_cache = None
+        self._paths_cache = None
         self.load_index()
 
     def load_index(self):
         """Loads binary pickle index for speed."""
+        self._matrix_cache = None
+        self._paths_cache = None
         if self.index_file.exists():
             try:
                 with open(self.index_file, "rb") as f:
@@ -342,6 +347,10 @@ class MatryoshkaIndexer:
                     if self._unsaved_changes >= SAVE_INTERVAL:
                         self.save_index()
 
+        # Invalidate cache after indexing
+        self._matrix_cache = None
+        self._paths_cache = None
+
         self.save_index()
         print("[SYSTEM] Indexing Complete.")
 
@@ -367,8 +376,12 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            if self._matrix_cache is None or self._paths_cache is None:
+                self._paths_cache = list(self.index.keys())
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
+
+            paths = self._paths_cache
+            matrix = self._matrix_cache
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
