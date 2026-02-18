@@ -41,10 +41,15 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+        # Caching for search optimization
+        self._matrix_cache = None
+        self._paths_cache = None
         self.load_index()
 
     def load_index(self):
         """Loads binary pickle index for speed."""
+        self._matrix_cache = None
+        self._paths_cache = None
         if self.index_file.exists():
             try:
                 with open(self.index_file, "rb") as f:
@@ -68,6 +73,16 @@ class MatryoshkaIndexer:
                 self.index = {}
         else:
             print(f"[SYSTEM] No index found at {self.index_file}. Initializing new.")
+
+    def _get_matrix_and_paths(self):
+        """Lazy-load and cache the matrix and paths for search."""
+        if self._matrix_cache is None or self._paths_cache is None:
+            self._paths_cache = list(self.index.keys())
+            if not self._paths_cache:
+                self._matrix_cache = np.array([])
+            else:
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
+        return self._matrix_cache, self._paths_cache
 
     def save_index(self):
         """Atomic binary save to prevent corruption."""
@@ -238,6 +253,10 @@ class MatryoshkaIndexer:
 
         print(f"[SYSTEM] Found {len(files)} files. Processing...")
 
+        # Invalidate cache as we are about to update the index
+        self._matrix_cache = None
+        self._paths_cache = None
+
         # 1. Prepare Processing Queue
         tasks = []
         current_batch = []
@@ -338,6 +357,9 @@ class MatryoshkaIndexer:
                             "snippet": snippet,
                         }
                         self._unsaved_changes += 1
+                        # Invalidate cache on update
+                        self._matrix_cache = None
+                        self._paths_cache = None
                         print(f"[INDEXED] {path.split('::')[-1]}")
 
                     if self._unsaved_changes >= SAVE_INTERVAL:
@@ -368,8 +390,7 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            matrix, paths = self._get_matrix_and_paths()
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
