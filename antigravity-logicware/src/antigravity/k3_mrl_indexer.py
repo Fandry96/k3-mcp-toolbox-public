@@ -41,10 +41,18 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
+
+        # Matrix Cache
+        self._matrix_cache = None
+        self._paths_cache = None
+
         self.load_index()
 
     def load_index(self):
         """Loads binary pickle index for speed."""
+        self._matrix_cache = None
+        self._paths_cache = None
+
         if self.index_file.exists():
             try:
                 with open(self.index_file, "rb") as f:
@@ -331,6 +339,10 @@ class MatryoshkaIndexer:
             for future in concurrent.futures.as_completed(future_to_batch):
                 results = future.result()
                 if results:
+                    # Invalidate cache on update
+                    self._matrix_cache = None
+                    self._paths_cache = None
+
                     for path, vec, txt_hash, snippet in results:
                         self.index[path] = {
                             "vector": vec,
@@ -368,8 +380,12 @@ class MatryoshkaIndexer:
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
-            paths = list(self.index.keys())
-            matrix = np.stack([d["vector"] for d in self.index.values()])
+            if self._matrix_cache is None or self._paths_cache is None:
+                self._paths_cache = list(self.index.keys())
+                self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
+
+            paths = self._paths_cache
+            matrix = self._matrix_cache
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
