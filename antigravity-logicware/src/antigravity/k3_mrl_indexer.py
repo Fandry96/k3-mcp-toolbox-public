@@ -22,7 +22,7 @@ DEFAULT_MODEL = "models/text-embedding-004"  # SOTA (Dec 2025)
 # GEMINI_2_0_FLASH_COMPATIBLE = True
 BATCH_SIZE = 5  # Increased batch size for throughput
 MAX_WORKERS = 4  # Parallel API calls
-SAVE_INTERVAL = 20  # Auto-save every N updates
+SAVE_INTERVAL = 100  # Auto-save every N updates (Increased to reduce I/O overhead)
 
 
 class MatryoshkaIndexer:
