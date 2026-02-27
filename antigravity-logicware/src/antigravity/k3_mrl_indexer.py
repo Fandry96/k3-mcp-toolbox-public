@@ -415,7 +415,11 @@ class MatryoshkaIndexer:
 
             # Select Candidates
             k_cand = min(top_k * SHORTLIST_FACTOR, len(paths))
-            candidate_idxs = np.argsort(scores_short)[::-1][:k_cand]
+            # Bolt Optimization: Use argpartition for O(N) top-k selection instead of O(N log N) sort
+            if k_cand < len(paths):
+                candidate_idxs = np.argpartition(scores_short, -k_cand)[-k_cand:]
+            else:
+                candidate_idxs = np.arange(len(paths))
 
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
