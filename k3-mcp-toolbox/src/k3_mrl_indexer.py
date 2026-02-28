@@ -41,19 +41,7 @@ class MatryoshkaIndexer:
         self.index: Dict[str, Dict[str, Any]] = {}
         self.failed_files: List[str] = []
         self._unsaved_changes = 0
-
-        # Caching for search performance
-        self._matrix_cache = None
-        self._paths_cache = None
-        self._matrix_short_norm_cache = None
-
         self.load_index()
-
-    def _invalidate_cache(self):
-        """Invalidate search caches when index changes."""
-        self._matrix_cache = None
-        self._paths_cache = None
-        self._matrix_short_norm_cache = None
 
     def load_index(self):
         """Loads binary pickle index for speed."""
@@ -75,11 +63,9 @@ class MatryoshkaIndexer:
                 print(
                     f"[SYSTEM] Loaded {len(self.index)} vectors from {self.index_file.name}"
                 )
-                self._invalidate_cache()
             except Exception as e:
                 print(f"[WARN] Index corrupt or incompatible ({e}). Starting fresh.")
                 self.index = {}
-                self._invalidate_cache()
         else:
             print(f"[SYSTEM] No index found at {self.index_file}. Initializing new.")
 
@@ -357,7 +343,6 @@ class MatryoshkaIndexer:
                     if self._unsaved_changes >= SAVE_INTERVAL:
                         self.save_index()
 
-        self._invalidate_cache()
         self.save_index()
         print("[SYSTEM] Indexing Complete.")
 
@@ -381,34 +366,19 @@ class MatryoshkaIndexer:
             )
             q_vec = np.array(resp.embeddings[0].values, dtype=np.float32)
 
-            # Prepare Matrix (with Caching)
-            if self._matrix_cache is None or self._paths_cache is None or self._matrix_short_norm_cache is None:
-                # Rebuild cache
-                self._paths_cache = list(self.index.keys())
-                if self.index:
-                    self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
-
-                    # Pre-compute normalized short matrix
-                    m_short = self._matrix_cache[:, :SHORTLIST_DIM]
-                    self._matrix_short_norm_cache = m_short / (
-                        np.linalg.norm(m_short, axis=1, keepdims=True) + 1e-9
-                    )
-                else:
-                    self._matrix_cache = np.array([])
-                    self._matrix_short_norm_cache = np.array([])
-
-            paths = self._paths_cache
-            matrix = self._matrix_cache
-            m_short_norm = self._matrix_short_norm_cache
-
-            if len(paths) == 0:
-                 print("[ERR] Index empty.")
-                 return []
+            # Prepare Matrix
+            # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
+            paths = list(self.index.keys())
+            matrix = np.stack([d["vector"] for d in self.index.values()])
 
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
+            m_short = matrix[:, :SHORTLIST_DIM]
 
-            # Normalize Query
+            # Normalize
+            m_short_norm = m_short / (
+                np.linalg.norm(m_short, axis=1, keepdims=True) + 1e-9
+            )
             q_short_norm = q_short / (np.linalg.norm(q_short) + 1e-9)
 
             scores_short = np.dot(m_short_norm, q_short_norm)
