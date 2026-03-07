@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-02-23 - [Cache Full Matrix to Avoid Repeated np.stack]
+**Learning:** Calling `np.stack` repeatedly to build a matrix from dictionary values during each search adds significant linear overhead (e.g. O(N) memory allocation and copying). The `np.stack` cost for vectors during every search dominates latency. By caching the stacked array (`_matrix_cache`) and normalized components (`_matrix_short_norm_cache`), search time is massively reduced.
+**Action:** Always prefer caching matrix computations instead of re-creating arrays from dictionary loops, especially for search/scoring on static or semi-static vector indices. Invalidate caching logic only when indices actually mutate.
