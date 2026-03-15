@@ -7,8 +7,7 @@ import re
 import concurrent.futures
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from dotenv import load_dotenv, find_dotenv
 
 # ------------------------------------------------------------------------------
@@ -17,7 +16,7 @@ from dotenv import load_dotenv, find_dotenv
 # ------------------------------------------------------------------------------
 
 # --- CONFIGURATION ---
-DEFAULT_MODEL = "models/text-embedding-004"  # SOTA (Dec 2025)
+DEFAULT_MODEL = "embeddinggemma-300m"
 # GEMINI_2_0_FLASH_COMPATIBLE = True
 BATCH_SIZE = 5  # Increased batch size for throughput
 MAX_WORKERS = 4  # Parallel API calls
@@ -33,7 +32,9 @@ class MatryoshkaIndexer:
         index_file: str,
         dimension: int = DEFAULT_DIMENSION,
     ):
-        self.client = genai.Client(api_key=api_key)
+        self.client = OpenAI(
+            base_url="http://localhost:8080/v1", api_key="sk-no-key-required"
+        )
         self.target_dir = Path(target_dir).resolve()
         self.index_file = Path(index_file).resolve()
         self.dimension = dimension
@@ -147,21 +148,27 @@ class MatryoshkaIndexer:
         """
         paths, texts = zip(*batch_data)
         try:
-            response = self.client.models.embed_content(
-                model=DEFAULT_MODEL,
-                contents=list(texts),
-                config=types.EmbedContentConfig(output_dimensionality=self.dimension),
+            # Encode with Local llama.cpp Server via OpenAI API
+            response = self.client.embeddings.create(
+                input=list(texts), model=DEFAULT_MODEL
             )
+            vectors = [res.embedding for res in response.data]
 
             results = []
-            if response.embeddings:
-                vectors = [
-                    np.array(e.values, dtype=np.float32) for e in response.embeddings
-                ]
-                for path, vec, text in zip(paths, vectors, texts):
-                    # Calculate hash here to ensure it matches the text actually embedded
-                    txt_hash = self.get_file_hash(text)
-                    results.append((path, vec, txt_hash, text[:200]))
+            for path, vec_raw, text in zip(paths, vectors, texts):
+                vec = np.array(vec_raw, dtype=np.float32)
+
+                # Truncate to desired dimension and re-normalize (Matryoshka representation)
+                if self.dimension < vec.shape[0]:
+                    vec = vec[: self.dimension]
+
+                norm = np.linalg.norm(vec)
+                if norm > 0:
+                    vec = vec / norm
+
+                # Calculate hash here to ensure it matches the text actually embedded
+                txt_hash = self.get_file_hash(text)
+                results.append((path, vec, txt_hash, text[:200]))
             return results
 
         except Exception as e:
@@ -359,12 +366,17 @@ class MatryoshkaIndexer:
 
         try:
             # Embed Query
-            resp = self.client.models.embed_content(
-                model=DEFAULT_MODEL,
-                contents=query,
-                config=types.EmbedContentConfig(output_dimensionality=self.dimension),
-            )
-            q_vec = np.array(resp.embeddings[0].values, dtype=np.float32)
+            # Note: We aren't normalizing the query according to standard MRL practice depending on how
+            # similarity is calculated (Cosine diff vs dot product). Let's trace back how the worker does it.
+            response = self.client.embeddings.create(input=query, model=DEFAULT_MODEL)
+            q_vec_raw = response.data[0].embedding
+            q_vec = np.array(q_vec_raw, dtype=np.float32)
+            if self.dimension < q_vec.shape[0]:
+                q_vec = q_vec[: self.dimension]
+
+            norm = np.linalg.norm(q_vec)
+            if norm > 0:
+                q_vec = q_vec / norm
 
             # Prepare Matrix
             # NOTE: For massive indices, use HNSW (faiss/chroma). For <100k vectors, numpy is fine.
