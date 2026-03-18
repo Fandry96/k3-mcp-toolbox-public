@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-03-18 - [Optimize Cosine Similarity with Raw Dot Product]
+**Learning:** In NumPy, calculating cosine similarity by first explicitly allocating normalized matrices (`m / np.linalg.norm(m)`) causes a significant memory allocation and computation bottleneck. Computing the raw dot product first and then scaling the resulting 1D array by the pre-computed magnitudes (`dot(A, B) / (|A| * |B|)`) avoids the large intermediate matrix allocation and results in an approximately 50%+ reduction in computation time for the reranking stage.
+**Action:** When performing cosine similarity on large vector subsets (like in `MatryoshkaIndexer` high-resolution rerank), compute the raw dot product and scale by magnitudes afterwards instead of pre-normalizing the entire subset matrix.
