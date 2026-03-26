@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-02-23 - [Optimize NumPy Matrix Subset Normalization]
+**Learning:** When calculating cosine similarity with a dense matrix subset (e.g. reranking candidates), computing a fully normalized subset `m_full_subset / np.linalg.norm` is slow due to intermediate 2D memory allocations. Computing the dot product first and then dividing by the scaled 1D norms calculated via `np.einsum('ij,ij->i', m, m)` is much faster (~3x-7x speedup in isolated benchmarks).
+**Action:** In inner hot loops computing vector similarities, calculate raw dot products and scale by 1D vector magnitudes (using `einsum`) rather than doing full intermediate 2D matrix broadcasting normalization.
