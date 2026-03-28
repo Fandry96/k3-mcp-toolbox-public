@@ -388,11 +388,10 @@ class MatryoshkaIndexer:
                 if self.index:
                     self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
 
-                    # Pre-compute normalized short matrix
+                    # ⚡ BOLT OPTIMIZATION: Avoid large NxD normal matrix allocation
+                    # Cache 1D norms using np.einsum (significantly faster)
                     m_short = self._matrix_cache[:, :SHORTLIST_DIM]
-                    self._matrix_short_norm_cache = m_short / (
-                        np.linalg.norm(m_short, axis=1, keepdims=True) + 1e-9
-                    )
+                    self._matrix_short_norm_cache = np.sqrt(np.einsum('ij,ij->i', m_short, m_short)) + 1e-9
                 else:
                     self._matrix_cache = np.array([])
                     self._matrix_short_norm_cache = np.array([])
@@ -408,10 +407,12 @@ class MatryoshkaIndexer:
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
 
-            # Normalize Query
-            q_short_norm = q_short / (np.linalg.norm(q_short) + 1e-9)
+            # ⚡ BOLT OPTIMIZATION: Compute raw dot product and scale by 1D norms
+            q_short_norm = np.sqrt(np.dot(q_short, q_short)) + 1e-9
 
-            scores_short = np.dot(m_short_norm, q_short_norm)
+            # Here m_short_norm is actually the array of 1D norms (see caching logic above)
+            raw_scores_short = np.dot(matrix[:, :SHORTLIST_DIM], q_short)
+            scores_short = raw_scores_short / (m_short_norm * q_short_norm)
 
             # Select Candidates
             k_cand = min(top_k * SHORTLIST_FACTOR, len(paths))
@@ -432,12 +433,13 @@ class MatryoshkaIndexer:
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
 
-            m_full_norm = m_full_subset / (
-                np.linalg.norm(m_full_subset, axis=1, keepdims=True) + 1e-9
-            )
-            q_full_norm = q_vec / (np.linalg.norm(q_vec) + 1e-9)
+            # ⚡ BOLT OPTIMIZATION:
+            # Avoid NxD memory allocation and reduce normalization time via np.einsum.
+            m_full_norms = np.sqrt(np.einsum('ij,ij->i', m_full_subset, m_full_subset)) + 1e-9
+            q_full_norm = np.sqrt(np.dot(q_vec, q_vec)) + 1e-9
 
-            scores_full = np.dot(m_full_norm, q_full_norm)
+            raw_scores_full = np.dot(m_full_subset, q_vec)
+            scores_full = raw_scores_full / (m_full_norms * q_full_norm)
 
             # Final Sort
             if top_k <= 0:
