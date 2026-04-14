@@ -1,3 +1,11 @@
-## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
-**Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
-**Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+## 2025-03-01 - [Fast Whitespace Normalization]
+**Learning:** String `split()` and `join()` are significantly faster (around ~5x in Python) for standard whitespace normalization compared to compiling and executing regex patterns like `re.sub(r"\s+", " ", text).strip()`.
+**Action:** When normalizing repetitive or continuous space characters in a hot path such as document parsing or indexing, opt for the `" ".join(text.split())` pattern instead of regular expressions unless complex structural regex logic is strictly required.
+
+## 2025-03-01 - [Fast Whitespace Normalization]
+**Learning:** String `split()` and `join()` are significantly faster (around ~5x in Python) for standard whitespace normalization compared to compiling and executing regex patterns like `re.sub(r"\s+", " ", text).strip()`.
+**Action:** When normalizing repetitive or continuous space characters in a hot path such as document parsing or indexing, opt for the `" ".join(text.split())` pattern instead of regular expressions unless complex structural regex logic is strictly required.
+
+## 2025-03-01 - [Fast Whitespace Normalization]
+**Learning:** String `split()` and `join()` are significantly faster (around ~5x in Python) for standard whitespace normalization compared to compiling and executing regex patterns like `re.sub(r"\s+", " ", text).strip()`.
+**Action:** When normalizing repetitive or continuous space characters in a hot path such as document parsing or indexing, opt for the `" ".join(text.split())` pattern instead of regular expressions unless complex structural regex logic is strictly required.
