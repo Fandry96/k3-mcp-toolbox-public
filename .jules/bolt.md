@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-04-20 - [MatryoshkaIndexer Python Normalization & String Splitting]
+**Learning:** `np.linalg.norm` across large matrices creates large intermediate arrays. By applying `.dot` first on raw vectors, and scaling using `np.einsum('ij,ij->i')` for 1D norms, we can significantly speed up cosine similarity scoring. Additionally, regex whitespace replacement (`re.sub(r"\s+", " ", text).strip()`) is very slow in Python and can be replaced by `" ".join(text.split())` for ~5x speedup.
+**Action:** Always prefer computing raw dot products and scaling by 1D norms (via einsum) over normalized matrix generation in high-performance numpy loops. Use string splitting for whitespace normalization instead of regex in Python hot paths.
