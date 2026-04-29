@@ -432,12 +432,15 @@ class MatryoshkaIndexer:
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
 
-            m_full_norm = m_full_subset / (
-                np.linalg.norm(m_full_subset, axis=1, keepdims=True) + 1e-9
-            )
-            q_full_norm = q_vec / (np.linalg.norm(q_vec) + 1e-9)
-
-            scores_full = np.dot(m_full_norm, q_full_norm)
+            # ⚡ BOLT OPTIMIZATION:
+            # Calculate cosine similarity without allocating a massive NxD intermediate normalized matrix.
+            # Instead, calculate the raw dot product and scale by 1D norms.
+            # np.einsum('ij,ij->i') is used for extremely fast row-wise squared norm calculation.
+            # This provides a significant speedup and reduces memory pressure during reranking.
+            raw_scores = np.dot(m_full_subset, q_vec)
+            m_norms = np.sqrt(np.einsum('ij,ij->i', m_full_subset, m_full_subset))
+            q_norm = np.linalg.norm(q_vec)
+            scores_full = raw_scores / ((m_norms + 1e-9) * (q_norm + 1e-9))
 
             # Final Sort
             if top_k <= 0:
