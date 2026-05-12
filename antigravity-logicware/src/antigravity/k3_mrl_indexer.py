@@ -388,18 +388,19 @@ class MatryoshkaIndexer:
                 if self.index:
                     self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
 
-                    # Pre-compute normalized short matrix
+                    # Pre-compute 1D squared norms for short matrix
                     m_short = self._matrix_cache[:, :SHORTLIST_DIM]
-                    self._matrix_short_norm_cache = m_short / (
-                        np.linalg.norm(m_short, axis=1, keepdims=True) + 1e-9
-                    )
+                    # ⚡ BOLT OPTIMIZATION:
+                    # Store 1D squared norms instead of a fully normalized NxD matrix.
+                    # This saves memory and aligns with raw dot product scaling at query time.
+                    self._matrix_short_norm_cache = np.einsum('ij,ij->i', m_short, m_short)
                 else:
                     self._matrix_cache = np.array([])
                     self._matrix_short_norm_cache = np.array([])
 
             paths = self._paths_cache
             matrix = self._matrix_cache
-            m_short_norm = self._matrix_short_norm_cache
+            m_short_sq_norm = self._matrix_short_norm_cache
 
             if len(paths) == 0:
                  print("[ERR] Index empty.")
@@ -408,10 +409,10 @@ class MatryoshkaIndexer:
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
 
-            # Normalize Query
-            q_short_norm = q_short / (np.linalg.norm(q_short) + 1e-9)
-
-            scores_short = np.dot(m_short_norm, q_short_norm)
+            # ⚡ BOLT OPTIMIZATION: Compute raw dot product first and scale by 1D norms.
+            q_short_sq_norm = np.dot(q_short, q_short)
+            raw_scores_short = np.dot(matrix[:, :SHORTLIST_DIM], q_short)
+            scores_short = raw_scores_short / (np.sqrt(m_short_sq_norm * q_short_sq_norm) + 1e-9)
 
             # Select Candidates
             k_cand = min(top_k * SHORTLIST_FACTOR, len(paths))
@@ -432,12 +433,13 @@ class MatryoshkaIndexer:
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
 
-            m_full_norm = m_full_subset / (
-                np.linalg.norm(m_full_subset, axis=1, keepdims=True) + 1e-9
-            )
-            q_full_norm = q_vec / (np.linalg.norm(q_vec) + 1e-9)
-
-            scores_full = np.dot(m_full_norm, q_full_norm)
+            # ⚡ BOLT OPTIMIZATION:
+            # Avoid allocating an intermediate normalized N x D matrix.
+            # Compute raw dot product first and scale by 1D norms.
+            m_sq_norms = np.einsum('ij,ij->i', m_full_subset, m_full_subset)
+            q_sq_norm = np.dot(q_vec, q_vec)
+            raw_scores_full = np.dot(m_full_subset, q_vec)
+            scores_full = raw_scores_full / (np.sqrt(m_sq_norms * q_sq_norm) + 1e-9)
 
             # Final Sort
             if top_k <= 0:
