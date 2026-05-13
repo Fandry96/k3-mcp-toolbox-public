@@ -402,12 +402,14 @@ class MatryoshkaIndexer:
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
 
-            m_full_norm = m_full_subset / (
-                np.linalg.norm(m_full_subset, axis=1, keepdims=True) + 1e-9
-            )
-            q_full_norm = q_vec / (np.linalg.norm(q_vec) + 1e-9)
+            # ⚡ BOLT OPTIMIZATION: Avoid allocating intermediate normalized Nx768 matrices.
+            # Calculate dot product first, then scale by 1D norms.
+            # Use einsum for squared norms to avoid linalg.norm overhead.
+            m_full_sq_norms = np.einsum('ij,ij->i', m_full_subset, m_full_subset)
+            q_full_sq_norm = np.dot(q_vec, q_vec)
 
-            scores_full = np.dot(m_full_norm, q_full_norm)
+            raw_scores = np.dot(m_full_subset, q_vec)
+            scores_full = raw_scores / (np.sqrt(m_full_sq_norms * q_full_sq_norm) + 1e-9)
 
             # Final Sort
             if top_k <= 0:
