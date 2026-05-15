@@ -53,7 +53,7 @@ class MatryoshkaIndexer:
         """Invalidate search caches when index changes."""
         self._matrix_cache = None
         self._paths_cache = None
-        self._matrix_short_norm_cache = None
+        self._matrix_short_sq_norms_cache = None
 
     def load_index(self):
         """Loads binary pickle index for speed."""
@@ -382,24 +382,22 @@ class MatryoshkaIndexer:
             q_vec = np.array(resp.embeddings[0].values, dtype=np.float32)
 
             # Prepare Matrix (with Caching)
-            if self._matrix_cache is None or self._paths_cache is None or self._matrix_short_norm_cache is None:
+            if getattr(self, '_matrix_short_sq_norms_cache', None) is None or self._matrix_cache is None or self._paths_cache is None:
                 # Rebuild cache
                 self._paths_cache = list(self.index.keys())
                 if self.index:
                     self._matrix_cache = np.stack([d["vector"] for d in self.index.values()])
 
-                    # Pre-compute normalized short matrix
+                    # ⚡ BOLT OPTIMIZATION: Compute 1D squared norms instead of full NxD matrix
                     m_short = self._matrix_cache[:, :SHORTLIST_DIM]
-                    self._matrix_short_norm_cache = m_short / (
-                        np.linalg.norm(m_short, axis=1, keepdims=True) + 1e-9
-                    )
+                    self._matrix_short_sq_norms_cache = np.einsum('ij,ij->i', m_short, m_short)
                 else:
                     self._matrix_cache = np.array([])
-                    self._matrix_short_norm_cache = np.array([])
+                    self._matrix_short_sq_norms_cache = np.array([])
 
             paths = self._paths_cache
             matrix = self._matrix_cache
-            m_short_norm = self._matrix_short_norm_cache
+            m_short_sq_norms = self._matrix_short_sq_norms_cache
 
             if len(paths) == 0:
                  print("[ERR] Index empty.")
@@ -408,10 +406,11 @@ class MatryoshkaIndexer:
             # --- STAGE 1: Low-Res Shortlist (64 dims) ---
             q_short = q_vec[:SHORTLIST_DIM]
 
-            # Normalize Query
-            q_short_norm = q_short / (np.linalg.norm(q_short) + 1e-9)
-
-            scores_short = np.dot(m_short_norm, q_short_norm)
+            # ⚡ BOLT OPTIMIZATION: Use raw dot product scaled by cached 1D squared norms
+            q_short_sq_norm = np.dot(q_short, q_short)
+            scores_short = np.dot(matrix[:, :SHORTLIST_DIM], q_short) / (
+                np.sqrt(m_short_sq_norms * q_short_sq_norm) + 1e-9
+            )
 
             # Select Candidates
             k_cand = min(top_k * SHORTLIST_FACTOR, len(paths))
@@ -432,12 +431,12 @@ class MatryoshkaIndexer:
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
 
-            m_full_norm = m_full_subset / (
-                np.linalg.norm(m_full_subset, axis=1, keepdims=True) + 1e-9
+            # ⚡ BOLT OPTIMIZATION: Dynamic subset 1D squared norm scaling
+            m_full_sq_norms = np.einsum('ij,ij->i', m_full_subset, m_full_subset)
+            q_full_sq_norm = np.dot(q_vec, q_vec)
+            scores_full = np.dot(m_full_subset, q_vec) / (
+                np.sqrt(m_full_sq_norms * q_full_sq_norm) + 1e-9
             )
-            q_full_norm = q_vec / (np.linalg.norm(q_vec) + 1e-9)
-
-            scores_full = np.dot(m_full_norm, q_full_norm)
 
             # Final Sort
             if top_k <= 0:
