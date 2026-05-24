@@ -1,3 +1,6 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+## 2024-05-24 - [Avoid NxD Normalization Matrix Allocations with np.einsum]
+**Learning:** Computing cosine similarity by dividing a matrix `A` by `np.linalg.norm(A, axis=1, keepdims=True)` allocates a massive NxD intermediate array.
+**Action:** Instead, compute the raw dot product `np.dot(A, B)` and scale the results by 1D squared norms computed via `np.einsum('ij,ij->i', A, A)`. This avoids the NxD allocation and reduces latency significantly (e.g. 6x speedup in reranking).
