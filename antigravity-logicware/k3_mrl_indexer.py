@@ -374,13 +374,11 @@ class MatryoshkaIndexer:
             q_short = q_vec[:SHORTLIST_DIM]
             m_short = matrix[:, :SHORTLIST_DIM]
 
-            # Normalize
-            m_short_norm = m_short / (
-                np.linalg.norm(m_short, axis=1, keepdims=True) + 1e-9
-            )
-            q_short_norm = q_short / (np.linalg.norm(q_short) + 1e-9)
-
-            scores_short = np.dot(m_short_norm, q_short_norm)
+            # ⚡ BOLT OPTIMIZATION: Raw dot products scaled by 1D squared norms
+            m_short_sq_norms = np.einsum('ij,ij->i', m_short, m_short)
+            q_short_sq_norm = np.dot(q_short, q_short)
+            raw_scores_short = np.dot(m_short, q_short)
+            scores_short = raw_scores_short / ((np.sqrt(m_short_sq_norms) + 1e-9) * (np.sqrt(q_short_sq_norm) + 1e-9))
 
             # Select Candidates
             k_cand = min(top_k * SHORTLIST_FACTOR, len(paths))
