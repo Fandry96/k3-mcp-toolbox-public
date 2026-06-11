@@ -1,3 +1,6 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+## 2024-05-18 - Avoid Path objects in tight loops
+**Learning:** Creating `pathlib.Path` objects inside tight loops like `os.walk` file filtering is surprisingly expensive. Micro-benchmarks showed native string operations like `file.endswith(extensions_tuple)` are ~21x faster than `Path(file).suffix in extensions_set`.
+**Action:** Default to native string operations for simple path comparisons (like extension checking) inside high-frequency loops instead of instantiating heavy object abstractions.
