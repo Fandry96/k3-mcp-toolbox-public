@@ -20,6 +20,8 @@ from dotenv import load_dotenv, find_dotenv
 DEFAULT_MODEL = "models/text-embedding-004"  # SOTA (Dec 2025)
 # GEMINI_2_0_FLASH_COMPATIBLE = True
 BATCH_SIZE = 5  # Increased batch size for throughput
+
+FILE_HEADER_RE = re.compile(r"(^--- FILE: .*? ---$)", flags=re.MULTILINE)
 MAX_WORKERS = 4  # Parallel API calls
 SAVE_INTERVAL = 20  # Auto-save every N updates
 
@@ -114,7 +116,9 @@ class MatryoshkaIndexer:
             ".git",
             "__pycache__",
         }
-        extensions = {
+        # ⚡ BOLT OPTIMIZATION:
+        # Use tuple for native string method endswith instead of Path object creation
+        extensions = (
             ".txt",
             ".md",
             ".py",
@@ -128,12 +132,12 @@ class MatryoshkaIndexer:
             ".java",
             ".c",
             ".h",
-        }
+        )
 
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
             for file in files:
-                if Path(file).suffix in extensions:
+                if file.endswith(extensions):
                     valid_files.append(Path(root) / file)
         return valid_files
 
@@ -174,19 +178,22 @@ class MatryoshkaIndexer:
         chunks = []
 
         # 1. Custom File Delimiters
-        parts = re.split(r"(^--- FILE: .*? ---$)", raw_text, flags=re.MULTILINE)
+        # ⚡ BOLT OPTIMIZATION:
+        # Pre-compile regex and process parts directly instead of string replacing the header for each chunk
+        parts = FILE_HEADER_RE.split(raw_text)
+
         if len(parts) > 1:
-            current_header = "preamble"
-            for part in parts:
-                part = part.strip()
-                if not part:
-                    continue
-                if part.startswith("--- FILE:"):
-                    current_header = (
-                        part.replace("--- FILE:", "").replace("---", "").strip()
-                    )
-                else:
-                    chunks.extend(self._text_splitter(part, current_header, limit))
+            # First part is always preamble (before first match)
+            preamble = parts[0].strip()
+            if preamble:
+                chunks.extend(self._text_splitter(preamble, "preamble", limit))
+
+            for i in range(1, len(parts), 2):
+                header_raw = parts[i]
+                content = parts[i+1].strip()
+                if content:
+                    current_header = header_raw.replace("--- FILE:", "").replace("---", "").strip()
+                    chunks.extend(self._text_splitter(content, current_header, limit))
         else:
             chunks = self._text_splitter(raw_text, "main", limit)
 
@@ -205,15 +212,16 @@ class MatryoshkaIndexer:
         current_len = 0
         chunk_idx = 0
 
+        # ⚡ BOLT OPTIMIZATION:
+        # Avoid creating intermediate strings and lists in hot path
         for line in lines:
             line_len = len(line) + 1  # +1 for newline
             if current_len + line_len > limit:
                 # Commit current chunk
                 if current_chunk:
-                    joined = "\n".join(current_chunk)
-                    chunks.append((joined, f"::{base_id}[{chunk_idx}]"))
+                    chunks.append(("\n".join(current_chunk), f"::{base_id}[{chunk_idx}]"))
                     chunk_idx += 1
-                    current_chunk = []
+                    current_chunk.clear()
                     current_len = 0
 
             current_chunk.append(line)
@@ -221,8 +229,7 @@ class MatryoshkaIndexer:
 
         # Flush remainder
         if current_chunk:
-            joined = "\n".join(current_chunk)
-            chunks.append((joined, f"::{base_id}[{chunk_idx}]"))
+            chunks.append(("\n".join(current_chunk), f"::{base_id}[{chunk_idx}]"))
 
         return chunks
 
