@@ -25,6 +25,8 @@ MAX_WORKERS = 4  # Parallel API calls
 SAVE_INTERVAL = 100  # Auto-save every N updates (Increased to reduce I/O overhead)
 
 
+FILE_SPLIT_PATTERN = re.compile(r"(^--- FILE: .*? ---$)", flags=re.MULTILINE)
+
 class MatryoshkaIndexer:
     def __init__(
         self,
@@ -109,7 +111,7 @@ class MatryoshkaIndexer:
     def sanitize_content(self, text: str) -> str:
         # Remove binary noise / markdown images
         text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
-        text = re.sub(r"\s+", " ", text).strip()
+        text = " ".join(text.split())
         return text
 
     def walk_files(self) -> List[Path]:
@@ -144,11 +146,12 @@ class MatryoshkaIndexer:
             ".c",
             ".h",
         }
+        ext_tuple = tuple(extensions)
 
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
             for file in files:
-                if Path(file).suffix in extensions:
+                if file.endswith(ext_tuple):
                     valid_files.append(Path(root) / file)
         return valid_files
 
@@ -189,7 +192,7 @@ class MatryoshkaIndexer:
         chunks = []
 
         # 1. Custom File Delimiters
-        parts = re.split(r"(^--- FILE: .*? ---$)", raw_text, flags=re.MULTILINE)
+        parts = FILE_SPLIT_PATTERN.split(raw_text)
         if len(parts) > 1:
             current_header = "preamble"
             for part in parts:
