@@ -129,26 +129,26 @@ class MatryoshkaIndexer:
             ".git",
             "__pycache__",
         }
-        extensions = {
-            ".txt",
-            ".md",
-            ".py",
-            ".js",
-            ".json",
-            ".html",
-            ".css",
-            ".ts",
-            ".go",
-            ".rs",
-            ".java",
-            ".c",
-            ".h",
-        }
+        extensions = (
+            '.txt',
+            '.md',
+            '.py',
+            '.js',
+            '.json',
+            '.html',
+            '.css',
+            '.ts',
+            '.go',
+            '.rs',
+            '.java',
+            '.c',
+            '.h',
+        )
 
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
             for file in files:
-                if Path(file).suffix in extensions:
+                if file.endswith(extensions):
                     valid_files.append(Path(root) / file)
         return valid_files
 
@@ -390,9 +390,8 @@ class MatryoshkaIndexer:
 
                     # Pre-compute normalized short matrix
                     m_short = self._matrix_cache[:, :SHORTLIST_DIM]
-                    self._matrix_short_norm_cache = m_short / (
-                        np.linalg.norm(m_short, axis=1, keepdims=True) + 1e-9
-                    )
+                    m_short_sq_norms = np.einsum('ij,ij->i', m_short, m_short)
+                    self._matrix_short_norm_cache = m_short / (np.sqrt(m_short_sq_norms[:, np.newaxis]) + 1e-9)
                 else:
                     self._matrix_cache = np.array([])
                     self._matrix_short_norm_cache = np.array([])
@@ -432,9 +431,8 @@ class MatryoshkaIndexer:
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
 
-            m_full_norm = m_full_subset / (
-                np.linalg.norm(m_full_subset, axis=1, keepdims=True) + 1e-9
-            )
+            m_full_sq_norms = np.einsum('ij,ij->i', m_full_subset, m_full_subset)
+            m_full_norm = m_full_subset / (np.sqrt(m_full_sq_norms[:, np.newaxis]) + 1e-9)
             q_full_norm = q_vec / (np.linalg.norm(q_vec) + 1e-9)
 
             scores_full = np.dot(m_full_norm, q_full_norm)
