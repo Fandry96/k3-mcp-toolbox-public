@@ -402,12 +402,12 @@ class MatryoshkaIndexer:
             # --- STAGE 2: High-Res Rerank (768 dims) ---
             m_full_subset = matrix[candidate_idxs]
 
-            m_full_norm = m_full_subset / (
-                np.linalg.norm(m_full_subset, axis=1, keepdims=True) + 1e-9
+            raw_scores = np.dot(m_full_subset, q_vec)
+            m_sq_norms = np.einsum('ij,ij->i', m_full_subset, m_full_subset)
+            q_sq_norm = np.dot(q_vec, q_vec)
+            scores_full = raw_scores / (
+                (np.sqrt(m_sq_norms) + 1e-9) * (np.sqrt(q_sq_norm) + 1e-9)
             )
-            q_full_norm = q_vec / (np.linalg.norm(q_vec) + 1e-9)
-
-            scores_full = np.dot(m_full_norm, q_full_norm)
 
             # Final Sort
             if top_k <= 0:
