@@ -145,11 +145,16 @@ class MatryoshkaIndexer:
             ".h",
         }
 
+        # ⚡ BOLT OPTIMIZATION: Avoid expensive pathlib.Path instantiation in tight loop
+        # Converting set to tuple for fast native string endswith checking
+        ext_tuple = tuple(extensions)
+
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
+            root_path = Path(root)
             for file in files:
-                if Path(file).suffix in extensions:
-                    valid_files.append(Path(root) / file)
+                if file.endswith(ext_tuple):
+                    valid_files.append(root_path / file)
         return valid_files
 
     def _embed_batch_worker(
