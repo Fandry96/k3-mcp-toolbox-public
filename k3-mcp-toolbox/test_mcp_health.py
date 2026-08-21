@@ -42,7 +42,7 @@ def test_all_servers():
         if "tools" in result:
             print(f"   └─ {result['tools']} tools available")
 
-    return all(r["status"] == "✅ OK" for r in results.values())
+    assert all(r["status"] == "✅ OK" for r in results.values())
 
 
 if __name__ == "__main__":
