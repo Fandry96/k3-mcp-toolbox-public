@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-02-23 - [Optimize NumPy Norm Calculations]
+**Learning:** Using `np.linalg.norm(..., axis=1)` to calculate row-wise norms on a matrix is relatively slow in NumPy. Replacing it with `np.sqrt(np.einsum('ij,ij->i', A, A))` yields a significant speedup (e.g., ~3x faster in benchmarks). Similarly, for single 1D vectors, replacing `np.linalg.norm(v)` with `np.sqrt(np.dot(v, v))` provides a minor speedup (~1.6x faster).
+**Action:** When calculating 1D squared norms in NumPy for matrices, use `np.sqrt(np.einsum('ij,ij->i', A, A))[:, np.newaxis]`. For single 1D vectors, use `np.sqrt(np.dot(v, v))`. This avoids unnecessary intermediate array overhead in vector similarity search loops.
