@@ -1,5 +1,7 @@
 mcp[cli]
 python-dotenv
-# Core Dependencies from Logicware
 numpy
 google-genai
+requests
+pymupdf
+python-docx

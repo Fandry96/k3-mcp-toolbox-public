@@ -38,25 +38,23 @@ Add this to your `claude_desktop_config.json`:
 
 ---
 
-## 🛠️ The Tools
+## 🚀 K3 Custom MCP Server Fleet (`servers/`)
 
-### 1. `sequential_thinking` (The Logic)
+In addition to the legacy `k3-toolbox`, the repository now features **5 standalone, production-hardened MCP servers** registered in `mcp_config.json`:
 
-A "System 2" thinking module. Allows agents to break complex problems into dynamic steps, revise previous thoughts, and branch constraints.
+| Server Name | Entry Script | Primary Capabilities | Key Tools |
+|:---|:---|:---|:---|
+| **`k3-mrl-memory`** | `servers/k3_mrl_memory.py` | High-speed semantic vector search across 25K+ K3 chunks | `mrl_search`, `mrl_search_skills`, `mrl_index_stats` |
+| **`k3-agent-ops`** | `servers/k3_agent_ops.py` | Windows runtime hygiene, zombie reaping & port management | `ops_kill_zombies`, `ops_check_ports`, `ops_free_port`, `ops_system_health` |
+| **`k3-doc-intel`** | `servers/k3_doc_intel.py` | PDF/DOCX text extraction, chunking & project vector search | `doc_extract_text`, `doc_chunk_and_embed`, `doc_search`, `doc_list_ingested` |
+| **`k3-local-llm`** | `servers/k3_local_llm.py` | Bundled `llama-server.exe` orchestration & local embeddings | `local_models_list`, `local_server_status`, `local_server_start`, `local_embed`, `local_complete` |
+| **`k3-worktree-ops`** | `servers/k3_worktree_ops.py` | Git worktree isolation protocol for concurrent subagents | `worktree_create`, `worktree_list`, `worktree_diff`, `worktree_merge_and_cleanup` |
 
-* *Based on Protocol 310.*
-
-### 2. `mrl_search` (The Brain)
-
-**Matryoshka Representation Learning (MRL)** indexer.
-
-* **Zero-Setup**: Uses local storage (no vector DB required).
-* **SOTA**: Configured for `text-embedding-004` (Gemini) by default.
-* **Fast**: Funnel search implementation (64-dim shortlist -> 768-dim rerank).
-
-### 3. `kill_zombies` (The Ops)
-
-*Windows Only.* Instantly terminates stuck Chrome/Chromedriver processes and releases file locks. Essential for Selenium/Playwright agents.
+### Testing the Fleet
+Run the comprehensive integration test suite:
+```bash
+python test_mcp_fleet.py
+```
 
 ---
 
