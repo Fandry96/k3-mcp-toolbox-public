@@ -34,8 +34,10 @@ The following optimizations are **already merged into master**:
 
 1. [x] FastMCP server wrapper around MatryoshkaIndexer (`servers/k3_mrl_memory.py`)
 2. [x] 5-server FastMCP fleet with independent process execution
-3. [x] Comprehensive integration test suite (`test_mcp_fleet.py` 25/25 passing)
+3. [x] Comprehensive integration test suite (`test_mcp_fleet.py` 27/27 passing)
 4. [x] Gemini 3.8 Flash agentic primitives library (`antigravity-logicware`)
+5. [x] FastMCP Pydantic 2.x `server_version` fix across all servers
+6. [x] `llms.txt` and AI agent onboarding setup guide
 
 ## Priority Next Tasks
 

@@ -1,0 +1,55 @@
+# K3 MCP Toolbox & Antigravity Logicware
+
+> Production-grade FastMCP server fleet (5 servers) and Gemini 3.8 Flash agentic primitives for autonomous coding agents.
+
+## Quickstart for AI Agents
+- Install dependencies:
+  - `pip install -r k3-mcp-toolbox/requirements.txt`
+  - `pip install -e antigravity-logicware`
+- Run offline verification:
+  - `python k3-mcp-toolbox/test_mcp_fleet.py` (27/27 assertions, offline)
+  - `python antigravity-logicware/test_flash38.py` (8/8 assertions, offline)
+
+## Server Fleet (k3-mcp-toolbox/servers/)
+
+### 1. k3_agent_ops.py (OS & Process Sentinel)
+- ops_kill_zombies: Reaps orphan chromedriver, msedgedriver, headless browser processes while preserving active IDE and agent PIDs.
+- ops_check_ports: Returns active listeners on common dev ports (3000, 8000, 8080, etc.).
+- ops_free_port: Frees a locked TCP port by PID.
+- ops_system_health: Real-time CPU, RAM, disk, and agent process counts.
+
+### 2. k3_mrl_memory.py (Matryoshka Semantic Vector Search)
+- mrl_search: Cosine similarity over 25,300+ vectors in 0.22s on local CPU. Supports category filter (skill, knowledge, research, brain, book).
+- mrl_search_skills: Dedicated skill semantic router.
+- mrl_index_stats: Returns total chunk counts, categories, and dimension size (768-dim L2-normalized).
+
+### 3. k3_worktree_ops.py (Subagent Git Isolation)
+- worktree_list: Lists active worktrees.
+- worktree_create: Creates .worktrees/<branch> branched from current HEAD.
+- worktree_diff: Returns diff between worktree and target branch.
+- worktree_cleanup: Safely removes worktree and deletes branch.
+- worktree_merge_and_cleanup: Runs verification command from binary allowlist (pytest, npm, python), merges into target branch, rolls back (--abort) on conflict, and deletes worktree.
+
+### 4. k3_doc_intel.py (Secure Document Intelligence)
+- doc_extract_text: Extracts text from PDF (PyMuPDF) or DOCX (python-docx).
+- doc_chunk_and_embed: Paragraph-bounded chunking and embedding index generation.
+- doc_search: Project-scoped semantic search.
+- doc_list_ingested: Lists indexed documents. Uses restricted unpickler (_safe_unpickle) to block deserialization exploits.
+
+### 5. k3_local_llm.py (Local GGUF & llama-server Orchestration)
+- local_models_list: Scans models directory for .gguf weights.
+- local_server_status: Health check for local llama-server.exe.
+- local_server_start: Launches background server with model path, port, context size, and non-blocking I/O.
+- local_server_stop: Gracefully stops server process.
+- local_embed & local_complete: Offline fallbacks for embeddings and text generation.
+
+## Agentic Primitives (antigravity-logicware/src/antigravity/flash38_primitives.py)
+- FlashConfig: Validates thinking_level ('low' | 'medium' | 'high'). Rejects and strips banned parameters (temperature, top_p, top_k, presence_penalty, frequency_penalty, candidate_count, thinking_level: 'minimal').
+- ToolDispatcher: Auto-handles update() progress tool, catches handler exceptions for model self-correction, and enforces 1:1 FunctionCall.id matching.
+- get_update_tool_declaration(): Structured schema (previous_step, plan, next_step) replacing free-text chain-of-thought between tool calls.
+- run_agent_loop(): Multi-turn loop with ID matching and retry logic.
+
+## Critical Gotchas for AI
+1. Always assign mcp._mcp_server.version = '1.0.0' after initializing FastMCP() to prevent Pydantic 2.x ValidationError on client handshake.
+2. In Gemini 3.8 Flash, every FunctionResponse MUST echo the exact id of its FunctionCall.
+3. In Gemini 3.8 Flash, never pass temperature, top_p, top_k, or penalties.
