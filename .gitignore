@@ -1,0 +1,15 @@
+# Bytecode and caches
+__pycache__/
+*.py[cod]
+*.class
+.pytest_cache/
+
+# Environment and local configs
+.env
+.env.*
+*.local
+
+# Large data and model caches
+*.pkl
+*.gguf
+*.bin

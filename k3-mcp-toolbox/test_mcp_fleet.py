@@ -81,6 +81,10 @@ def test_server_doc_intel():
     test("Chunking produces non-empty list", len(chunks) > 1)
     test("Chunk overlap preserves content", all(len(c) > 0 for c in chunks))
 
+    # Degenerate chunk parameters test (overlap > chunk_size)
+    degen_chunks = k3_doc_intel._chunk_text(sample_text, chunk_size=50, overlap=200)
+    test("Degenerate overlap is bounded safely", len(degen_chunks) > 0 and len(degen_chunks) < 50)
+
     # Path resolution test
     idx_path = k3_doc_intel._resolve_index_path("c:\\test_project")
     test("Project index path resolves to .agents/doc_index.pkl", idx_path.name == "doc_index.pkl" and idx_path.parent.name == ".agents")

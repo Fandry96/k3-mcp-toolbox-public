@@ -99,6 +99,9 @@ def _extract_text_from_file(file_path: Path) -> str:
 
 def _chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[str]:
     """Splits text into chunks respecting paragraph and line boundaries."""
+    chunk_size = max(50, chunk_size)
+    overlap = max(0, min(overlap, chunk_size // 2))
+
     if len(text) <= chunk_size:
         return [text]
 

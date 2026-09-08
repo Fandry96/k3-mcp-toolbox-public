@@ -14,22 +14,35 @@ The following optimizations are **already merged into master**:
 
 ## Architecture
 
+- `k3-mcp-toolbox/servers/` — 5 production FastMCP servers:
+  - `k3_mrl_memory.py`: 25,000+ vector MRL search with category filters & skill discovery
+  - `k3_agent_ops.py`: Windows runtime sentinel, zombie reaping & port diagnosis
+  - `k3_doc_intel.py`: Document extraction (PDF/DOCX), boundary chunking & embeddings
+  - `k3_local_llm.py`: Bundled `llama-server.exe` lifecycle & local GGUF models
+  - `k3_worktree_ops.py`: Git worktree isolation protocol for concurrent agents
 - `k3-mcp-toolbox/src/k3_mrl_indexer.py` — Primary MRL indexer implementation
-- `antigravity-logicware/k3_mrl_indexer.py` — Mirror implementation (keep in sync)
-- Both files should always have matching optimizations.
+- `antigravity-logicware/src/antigravity/flash38_primitives.py` — Gemini 3.8 Flash agentic primitives (FlashConfig, ToolDispatcher, update tool, ID contract)
+- `k3-mcp-toolbox/test_mcp_fleet.py` — 25-assertion integration test suite for the server fleet
 
 ## Deployment Context
 
 - This repo is cloned into `K3_Firehose` at `c:\K3_Firehose\k3-mcp-toolbox-public\`
-- Used as an embedded module by K3 agents for semantic vector search
+- Used as an embedded module by K3 agents for semantic vector search and runtime ops
 - Secrets must NEVER be hardcoded — use environment variables or GCP Cloud Secret Manager
+
+## Completed Milestones (September 2026)
+
+1. [x] FastMCP server wrapper around MatryoshkaIndexer (`servers/k3_mrl_memory.py`)
+2. [x] 5-server FastMCP fleet with independent process execution
+3. [x] Comprehensive integration test suite (`test_mcp_fleet.py` 25/25 passing)
+4. [x] Gemini 3.8 Flash agentic primitives library (`antigravity-logicware`)
 
 ## Priority Next Tasks
 
-1. Build an MCP server wrapper around MatryoshkaIndexer
-2. Create auto-indexing daemon for file watching
-3. Add comprehensive unit tests for search correctness
-4. Add type hints and docstrings throughout
+1. Create auto-indexing daemon / background watcher for live incremental MRL index updates
+2. Add generative GGUF model download helper for `k3-local-llm` offline completions
+3. Benchmark local llama-server embedding throughput vs Gemini REST API
+4. Add type hints and docstrings throughout legacy modules
 
 ## Rules
 
