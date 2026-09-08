@@ -105,17 +105,17 @@ def _ensure_index() -> tuple:
 
 
 def _classify_key(key: str) -> str:
-    """Determines category from key path."""
+    """Determines category from key path or ID prefix."""
     k_lower = key.lower()
-    if "proto_book" in k_lower or "book" in k_lower:
-        return "book"
-    if "skill" in k_lower:
-        return "skill"
-    if "knowledge" in k_lower or "\\ki_" in k_lower:
+    if k_lower.startswith("ki:") or "knowledge" in k_lower or "\\ki" in k_lower or "/ki" in k_lower:
         return "knowledge"
-    if "brain" in k_lower:
+    if k_lower.startswith("skill:") or "skill" in k_lower:
+        return "skill"
+    if k_lower.startswith("brain:") or "brain" in k_lower:
         return "brain"
-    if "research" in k_lower or "night" in k_lower or "deep" in k_lower:
+    if k_lower.startswith("proto-book:") or "proto_book" in k_lower or k_lower.startswith("forge-ref:") or k_lower.startswith("extraction:"):
+        return "book"
+    if "research" in k_lower or "night" in k_lower or "deep" in k_lower or k_lower.startswith("nlm:") or k_lower.endswith(".docx") or "florida" in k_lower:
         return "research"
     return "general"
 

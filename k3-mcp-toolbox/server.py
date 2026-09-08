@@ -1,3 +1,14 @@
+"""
+[DEPRECATED] Monolithic k3-toolbox server.
+Superseded by the 5-server FastMCP fleet in `servers/`:
+  - servers/k3_mrl_memory.py
+  - servers/k3_agent_ops.py
+  - servers/k3_doc_intel.py
+  - servers/k3_local_llm.py
+  - servers/k3_worktree_ops.py
+Retained for backwards compatibility with legacy launcher configs.
+"""
+
 from mcp.server.fastmcp import FastMCP
 import sys
 import os
