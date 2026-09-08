@@ -17,6 +17,7 @@ import requests
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("k3-local-llm")
+mcp._mcp_server.version = "1.0.0"
 
 TOOLBOX_DIR = Path(os.environ.get("K3_TOOLBOX_DIR", Path(__file__).resolve().parent.parent)).resolve()
 LLAMA_BIN_DIR = TOOLBOX_DIR / "src" / "llama_cpp_server"

@@ -20,6 +20,7 @@ import docx  # python-docx
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("k3-doc-intel")
+mcp._mcp_server.version = "1.0.0"
 
 DEFAULT_GLOBAL_INDEX = Path(
     os.environ.get(

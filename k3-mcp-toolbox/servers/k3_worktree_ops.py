@@ -16,6 +16,7 @@ from typing import Optional, List
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("k3-worktree-ops")
+mcp._mcp_server.version = "1.0.0"
 
 DEFAULT_REPO = Path(os.environ.get("K3_ROOT", r"C:\K3_Firehose")).resolve()
 WORKTREES_ROOT = Path.home() / ".gemini" / "antigravity" / "worktrees"

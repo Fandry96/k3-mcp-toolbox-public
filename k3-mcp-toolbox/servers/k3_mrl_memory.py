@@ -18,6 +18,7 @@ from mcp.server.fastmcp import FastMCP
 
 # Initialize FastMCP Server
 mcp = FastMCP("k3-mrl-memory")
+mcp._mcp_server.version = "1.0.0"
 
 # Paths
 DEFAULT_INDEX_PATH = Path(

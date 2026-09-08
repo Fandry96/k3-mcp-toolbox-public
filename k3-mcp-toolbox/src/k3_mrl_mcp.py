@@ -17,6 +17,7 @@ from mcp.server.fastmcp import FastMCP
 
 # Create the MCP Server
 mcp = FastMCP("k3_mrl_memory")
+mcp._mcp_server.version = "1.0.0"
 
 # Global reference to the indexer so we only load the 1.2GB model once
 INDEXER = None

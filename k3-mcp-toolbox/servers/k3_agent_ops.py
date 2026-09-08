@@ -13,6 +13,7 @@ from typing import List, Optional
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("k3-agent-ops")
+mcp._mcp_server.version = "1.0.0"
 
 CURRENT_PID = os.getpid()
 
