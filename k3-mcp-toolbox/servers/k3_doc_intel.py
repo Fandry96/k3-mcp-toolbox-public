@@ -31,7 +31,30 @@ TARGET_DIMENSION = 768
 MODEL = "models/gemini-embedding-001"
 
 
+class _RestrictedUnpickler(pickle.Unpickler):
+    """Restricts pickle deserialization to safe types only (numpy arrays, dicts, primitives)."""
+    _SAFE_MODULES = {
+        "builtins": {"dict", "list", "set", "frozenset", "tuple", "str", "int",
+                     "float", "bool", "bytes", "complex", "type", "slice", "range"},
+        "numpy": {"ndarray", "dtype", "float32", "float64", "int64", "int32", "uint8", "bool_"},
+        "numpy.core.multiarray": {"_reconstruct", "scalar"},
+        "collections": {"OrderedDict"},
+    }
+
+    def find_class(self, module: str, name: str) -> type:
+        if module in self._SAFE_MODULES and name in self._SAFE_MODULES[module]:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(f"Blocked unsafe class: {module}.{name}")
+
+
+def _safe_unpickle(file_path: Path) -> dict:
+    """Deserializes a pickle file using a restricted unpickler that blocks arbitrary code execution."""
+    with open(file_path, "rb") as f:
+        return _RestrictedUnpickler(f).load()
+
+
 def _get_api_key() -> str:
+    """Retrieves the Gemini API key from environment variables."""
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not key:
         raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY.")
@@ -183,8 +206,7 @@ def doc_chunk_and_embed(
     index = {}
     if idx_path.exists():
         try:
-            with open(idx_path, "rb") as f:
-                index = pickle.load(f)
+            index = _safe_unpickle(idx_path)
         except Exception:
             index = {}
 
@@ -265,8 +287,7 @@ def doc_search(
         return f"No document index found at {idx_path}. Use doc_chunk_and_embed first."
 
     try:
-        with open(idx_path, "rb") as f:
-            index = pickle.load(f)
+        index = _safe_unpickle(idx_path)
     except Exception as e:
         return f"Failed to load document index: {e}"
 
@@ -323,8 +344,7 @@ def doc_list_ingested(project_dir: Optional[str] = None) -> str:
         return f"No document index found at {idx_path}."
 
     try:
-        with open(idx_path, "rb") as f:
-            index = pickle.load(f)
+        index = _safe_unpickle(idx_path)
     except Exception as e:
         return f"Failed to load document index: {e}"
 

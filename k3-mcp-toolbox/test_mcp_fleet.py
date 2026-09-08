@@ -10,7 +10,6 @@ Tests all 5 servers:
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add servers directory to path
@@ -21,7 +20,7 @@ passed = 0
 failed = 0
 
 
-def test(name: str, condition: bool, detail: str = ""):
+def test(name: str, condition: bool, detail: str = "") -> None:
     global passed, failed
     if condition:
         passed += 1
@@ -31,16 +30,17 @@ def test(name: str, condition: bool, detail: str = ""):
         print(f"  [FAIL] {name} -- {detail}")
 
 
-def test_server_mrl_memory():
+def test_server_mrl_memory() -> None:
     print("\n=== 1. Testing k3-mrl-memory ===")
     import k3_mrl_memory
 
     # Key classification tests
-    test("Classify skill key", k3_mrl_memory._classify_key(r"c:\K3_Firehose\.agent\skills\test\SKILL.md") == "skill")
-    test("Classify knowledge key", k3_mrl_memory._classify_key(r"c:\Users\fandr\.gemini\antigravity\knowledge\ki_001.md") == "knowledge")
-    test("Classify research key", k3_mrl_memory._classify_key(r"c:\K3_Firehose\realtor-research\doc.docx") == "research")
-    test("Classify brain key", k3_mrl_memory._classify_key(r"c:\Users\fandr\.gemini\antigravity\brain\abc\task.md") == "brain")
-    test("Classify book key", k3_mrl_memory._classify_key(r"c:\K3_Firehose\Proto_book\research\book.md") == "book")
+    _home = str(Path.home())
+    test("Classify skill key", k3_mrl_memory._classify_key(f"{_home}\\.agent\\skills\\test\\SKILL.md") == "skill")
+    test("Classify knowledge key", k3_mrl_memory._classify_key(f"{_home}\\.gemini\\antigravity\\knowledge\\ki_001.md") == "knowledge")
+    test("Classify research key", k3_mrl_memory._classify_key(f"{_home}\\realtor-research\\doc.docx") == "research")
+    test("Classify brain key", k3_mrl_memory._classify_key(f"{_home}\\.gemini\\antigravity\\brain\\abc\\task.md") == "brain")
+    test("Classify book key", k3_mrl_memory._classify_key(f"{_home}\\Proto_book\\research\\book.md") == "book")
 
     # Stats test
     stats = k3_mrl_memory.mrl_index_stats()
@@ -53,7 +53,7 @@ def test_server_mrl_memory():
     test("mrl_search blocks empty query", "Error: Search query cannot be empty." in empty_res)
 
 
-def test_server_agent_ops():
+def test_server_agent_ops() -> None:
     print("\n=== 2. Testing k3-agent-ops ===")
     import k3_agent_ops
 
@@ -79,7 +79,7 @@ def test_server_agent_ops():
     test("Free port handles inactive port", "not in LISTEN" in free_res or "already free" in free_res)
 
 
-def test_server_doc_intel():
+def test_server_doc_intel() -> None:
     print("\n=== 3. Testing k3-doc-intel ===")
     import k3_doc_intel
 
@@ -102,7 +102,7 @@ def test_server_doc_intel():
     test("Missing index reports cleanly", "No document index found" in list_res)
 
 
-def test_server_local_llm():
+def test_server_local_llm() -> None:
     print("\n=== 4. Testing k3-local-llm ===")
     import k3_local_llm
 
@@ -122,7 +122,7 @@ def test_server_local_llm():
     test("Offline port reports OFFLINE status", "OFFLINE" in status_str)
 
 
-def test_server_worktree_ops():
+def test_server_worktree_ops() -> None:
     print("\n=== 5. Testing k3-worktree-ops ===")
     import k3_worktree_ops
 
@@ -149,7 +149,7 @@ def test_server_worktree_ops():
     test("worktree_merge blocks unauthorized verify binary", "Security Error" in unauth_res)
 
 
-def main():
+def main() -> None:
     test_server_mrl_memory()
     test_server_agent_ops()
     test_server_doc_intel()

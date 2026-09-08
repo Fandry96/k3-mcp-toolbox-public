@@ -31,7 +31,7 @@ _ACTIVE_MODEL: Optional[str] = None
 _ACTIVE_PORT: int = DEFAULT_PORT
 
 
-def _cleanup_server_proc():
+def _cleanup_server_proc() -> None:
     """Ensures child llama-server process terminates when MCP server exits."""
     global _SERVER_PROC
     if _SERVER_PROC and _SERVER_PROC.poll() is None:
@@ -46,12 +46,14 @@ atexit.register(_cleanup_server_proc)
 
 
 def _is_port_open(port: int, host: str = "127.0.0.1") -> bool:
+    """Tests if a TCP port is accepting connections."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.5)
         return s.connect_ex((host, port)) == 0
 
 
 def _check_health(port: int = DEFAULT_PORT) -> bool:
+    """Pings the llama-server health endpoint and returns True if healthy."""
     if not _is_port_open(port):
         return False
     try:
@@ -62,6 +64,7 @@ def _check_health(port: int = DEFAULT_PORT) -> bool:
 
 
 def _find_gguf_models() -> List[Dict[str, Any]]:
+    """Discovers all .gguf model files in the models directory."""
     models = []
     if not MODELS_DIR.exists():
         return models

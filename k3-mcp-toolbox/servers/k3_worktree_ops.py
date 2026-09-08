@@ -11,7 +11,7 @@ import shlex
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List
 
 from mcp.server.fastmcp import FastMCP
 
@@ -52,6 +52,7 @@ def _run_git(args: List[str], cwd: Path) -> subprocess.CompletedProcess:
 
 
 def _resolve_repo(repo_path: Optional[str] = None) -> Path:
+    """Resolves and validates a git repository path."""
     p = Path(repo_path).resolve() if repo_path else DEFAULT_REPO
     if not (p / ".git").exists() and not (p / ".git").is_file():
         raise ValueError(f"Directory {p} is not a valid git repository.")

@@ -65,7 +65,8 @@ class FlashConfig:
     response_mime_type: Optional[str] = None
     response_schema: Optional[dict] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Validates thinking_level and rejects unsupported values."""
         # Guard: reject 'minimal' even if someone passes the raw string
         if isinstance(self.thinking_level, str):
             normalized = self.thinking_level.lower().strip()
@@ -159,7 +160,7 @@ UPDATE_TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
-def get_update_tool_declaration():
+def get_update_tool_declaration() -> dict:
     """
     Returns the update() FunctionDeclaration for the google-genai SDK.
 
@@ -225,6 +226,7 @@ class UpdateState:
 
     @property
     def last(self) -> Optional[dict[str, str]]:
+        """Returns the most recent update state entry, or None."""
         return self.history[-1] if self.history else None
 
 
@@ -249,7 +251,7 @@ class ToolDispatcher:
     _handlers: dict[str, Callable[..., dict]] = field(default_factory=dict)
     _update_state: UpdateState = field(default_factory=UpdateState)
 
-    def register(self, name: str, handler: Callable[..., dict]):
+    def register(self, name: str, handler: Callable[..., dict]) -> None:
         """Register a tool handler. Handler receives (args: dict) -> dict."""
         self._handlers[name] = handler
 
@@ -264,6 +266,7 @@ class ToolDispatcher:
 
     @property
     def update_history(self) -> list[dict[str, str]]:
+        """Returns the full list of recorded update states."""
         return self._update_state.history
 
 
@@ -324,7 +327,7 @@ def run_agent_loop(
     chat = client.chats.create(model=model, config=config)
     response = chat.send_message(prompt)
 
-    for turn in range(max_turns):
+    for _turn in range(max_turns):
         if not response.candidates:
             return f"[Agent loop stopped: no candidates returned (feedback: {getattr(response, 'prompt_feedback', 'none')})]"
 
@@ -349,10 +352,16 @@ def run_agent_loop(
         # Execute all calls, build matched responses
         response_parts = []
         for fc in function_calls:
-            result = dispatcher.execute(fc.name, fc.args or {})
+            try:
+                result = dispatcher.execute(fc.name, fc.args or {})
+            except Exception as e:
+                result = {"error": f"Tool '{fc.name}' raised: {type(e).__name__}: {e}"}
 
             if fc.name == "update" and on_update:
-                on_update(fc.args or {})
+                try:
+                    on_update(fc.args or {})
+                except Exception:
+                    pass  # Callback errors should not crash the agent loop
 
             # Strict ID matching
             response_parts.append(

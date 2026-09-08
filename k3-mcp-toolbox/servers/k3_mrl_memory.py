@@ -37,6 +37,7 @@ _LAST_LOAD_TIME: float = 0.0
 
 
 def _get_api_key() -> str:
+    """Retrieves the Gemini API key from environment variables."""
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not key:
         raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY in environment.")
@@ -68,7 +69,7 @@ def _embed_query(query: str) -> np.ndarray:
     return vec
 
 
-def _ensure_index():
+def _ensure_index() -> tuple:
     """Loads and caches the MRL index into memory with precomputed matrix for O(N) top-k."""
     global _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE, _LAST_LOAD_TIME
 

@@ -41,7 +41,6 @@ def ops_kill_zombies() -> str:
     Terminates orphaned and runaway background processes (chromedriver, msedgedriver,
     stale chrome/edge test instances) while safely preserving active IDE and agent runtime PIDs.
     """
-    targets = ["chromedriver", "msedgedriver", "chrome", "msedge"]
     reaped = []
     skipped = []
 
