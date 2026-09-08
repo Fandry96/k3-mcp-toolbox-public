@@ -48,6 +48,10 @@ def test_server_mrl_memory():
     test("Stats contains total vectors", "Total Vectors:" in stats)
     test("Stats contains breakdown", "Corpus Breakdown:" in stats)
 
+    # Empty query test
+    empty_res = k3_mrl_memory.mrl_search("")
+    test("mrl_search blocks empty query", "Error: Search query cannot be empty." in empty_res)
+
 
 def test_server_agent_ops():
     print("\n=== 2. Testing k3-agent-ops ===")
@@ -56,6 +60,10 @@ def test_server_agent_ops():
     # Port check
     port_res = k3_agent_ops.ops_check_ports([9222, 54321])
     test("ops_check_ports returns status", "Port Status Scan" in port_res or "FREE" in port_res)
+
+    # Invalid port argument validation test
+    inv_port = k3_agent_ops.ops_check_ports(["not-a-port"])
+    test("ops_check_ports rejects non-integer ports", "Error:" in inv_port)
 
     # Health check
     health_res = k3_agent_ops.ops_system_health()
@@ -125,6 +133,20 @@ def test_server_worktree_ops():
     # Worktree list
     wt_list = k3_worktree_ops.worktree_list(r"c:\K3_Firehose")
     test("worktree_list returns string", "Active Git Worktrees" in wt_list or "No worktrees" in wt_list)
+
+    # Path traversal blocking test
+    try:
+        k3_worktree_ops._validate_branch_name("../../escaped")
+        test("Branch validation blocks path traversal", False)
+    except ValueError:
+        test("Branch validation blocks path traversal", True)
+
+    # Unauthorized verify binary test
+    unauth_res = k3_worktree_ops.worktree_merge_and_cleanup(
+        branch_name="valid-test-branch",
+        verify_command="malicious_binary arg1"
+    )
+    test("worktree_merge blocks unauthorized verify binary", "Security Error" in unauth_res)
 
 
 def main():

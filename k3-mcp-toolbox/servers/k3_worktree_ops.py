@@ -7,7 +7,7 @@ under ~/.gemini/antigravity/worktrees/ to eliminate Windows file-locking collisi
 """
 
 import os
-import sys
+import shlex
 import subprocess
 import shutil
 from pathlib import Path
@@ -17,8 +17,25 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("k3-worktree-ops")
 
-DEFAULT_REPO = Path(r"C:\K3_Firehose").resolve()
+DEFAULT_REPO = Path(os.environ.get("K3_ROOT", r"C:\K3_Firehose")).resolve()
 WORKTREES_ROOT = Path.home() / ".gemini" / "antigravity" / "worktrees"
+
+ALLOWED_VERIFY_COMMANDS = frozenset({
+    "python", "pytest", "npm", "pnpm", "node", "git", "go", "cargo", "deno"
+})
+
+
+def _validate_branch_name(branch_name: str) -> str:
+    """Sanitizes branch names and blocks path traversal attempts."""
+    clean = branch_name.strip().replace(" ", "-")
+    if not clean:
+        raise ValueError("Branch name cannot be empty.")
+    if ".." in clean or "/" in clean or "\\" in clean or clean.startswith("-"):
+        raise ValueError(f"Invalid branch name '{branch_name}': cannot contain '..', '/', '\\', or start with '-'.")
+    target = (WORKTREES_ROOT / clean).resolve()
+    if not target.is_relative_to(WORKTREES_ROOT.resolve()):
+        raise ValueError(f"Security error: Branch path '{target}' escapes worktrees root.")
+    return clean
 
 
 def _run_git(args: List[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -108,10 +125,10 @@ def worktree_create(
     """
     try:
         repo = _resolve_repo(repo_path)
+        clean_branch = _validate_branch_name(branch_name)
     except Exception as e:
         return f"Error: {e}"
 
-    clean_branch = branch_name.strip().replace(" ", "-")
     target_dir = WORKTREES_ROOT / clean_branch
     WORKTREES_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -159,22 +176,24 @@ def worktree_diff(
     """
     try:
         repo = _resolve_repo(repo_path)
+        clean_branch = _validate_branch_name(branch_name)
+        clean_target = _validate_branch_name(target_branch)
     except Exception as e:
         return f"Error: {e}"
 
     # Check stat
-    stat_res = _run_git(["diff", "--stat", f"{target_branch}...{branch_name}"], cwd=repo)
+    stat_res = _run_git(["diff", "--stat", f"{clean_target}...{clean_branch}"], cwd=repo)
     if stat_res.returncode != 0:
         # Try without 3 dots
-        stat_res = _run_git(["diff", "--stat", f"{target_branch}..{branch_name}"], cwd=repo)
+        stat_res = _run_git(["diff", "--stat", f"{clean_target}..{clean_branch}"], cwd=repo)
         if stat_res.returncode != 0:
             return f"Diff failed: {stat_res.stderr.strip()}"
 
     # Name-status
-    name_res = _run_git(["diff", "--name-status", f"{target_branch}...{branch_name}"], cwd=repo)
+    name_res = _run_git(["diff", "--name-status", f"{clean_target}...{clean_branch}"], cwd=repo)
 
     lines = [
-        f"=== Git Worktree Diff: {branch_name} vs {target_branch} ===",
+        f"=== Git Worktree Diff: {clean_branch} vs {clean_target} ===",
         f"Repository: {repo}\n",
         "Summary Statistics:",
         stat_res.stdout.strip() or "No file differences detected.",
@@ -200,11 +219,13 @@ def worktree_cleanup(
     """
     try:
         repo = _resolve_repo(repo_path)
+        clean_branch = _validate_branch_name(branch_name)
     except Exception as e:
         return f"Error: {e}"
 
-    clean_branch = branch_name.strip()
-    target_dir = WORKTREES_ROOT / clean_branch
+    target_dir = (WORKTREES_ROOT / clean_branch).resolve()
+    if not target_dir.is_relative_to(WORKTREES_ROOT.resolve()):
+        return f"Security error: '{target_dir}' escapes worktrees directory."
 
     # Run git worktree remove
     cmd = ["worktree", "remove", str(target_dir)]
@@ -218,7 +239,7 @@ def worktree_cleanup(
     else:
         # If directory was manually removed or pruned, run worktree prune
         _run_git(["worktree", "prune"], cwd=repo)
-        if target_dir.exists():
+        if target_dir.exists() and target_dir.is_relative_to(WORKTREES_ROOT.resolve()):
             shutil.rmtree(target_dir, ignore_errors=True)
             msg.append(f"Worktree pruned and purged manually: {target_dir}.")
         else:
@@ -252,19 +273,31 @@ def worktree_merge_and_cleanup(
     """
     try:
         repo = _resolve_repo(repo_path)
+        clean_branch = _validate_branch_name(branch_name)
+        clean_target = _validate_branch_name(target_branch)
     except Exception as e:
         return f"Error: {e}"
 
-    clean_branch = branch_name.strip()
-    target_dir = WORKTREES_ROOT / clean_branch
+    target_dir = (WORKTREES_ROOT / clean_branch).resolve()
+    if not target_dir.is_relative_to(WORKTREES_ROOT.resolve()):
+        return f"Security error: '{target_dir}' escapes worktrees directory."
 
     # 1. Run Pre-Merge Verification
     if verify_command:
+        cmd_parts = shlex.split(verify_command)
+        if not cmd_parts:
+            return "Error: verify_command is empty."
+        binary = cmd_parts[0].lower().replace(".exe", "")
+        if binary not in ALLOWED_VERIFY_COMMANDS:
+            return (
+                f"Security Error: verify_command binary '{cmd_parts[0]}' is not permitted.\n"
+                f"Allowed test runners: {', '.join(sorted(ALLOWED_VERIFY_COMMANDS))}"
+            )
         if not target_dir.exists():
             return f"Error: Worktree directory not found at {target_dir}."
         v_res = subprocess.run(
-            verify_command,
-            shell=True,
+            cmd_parts,
+            shell=False,
             cwd=str(target_dir),
             capture_output=True,
             text=True,
@@ -280,15 +313,17 @@ def worktree_merge_and_cleanup(
             )
 
     # 2. Checkout target branch in root repo
-    co_res = _run_git(["checkout", target_branch], cwd=repo)
+    co_res = _run_git(["checkout", clean_target], cwd=repo)
     if co_res.returncode != 0:
-        return f"Failed to checkout {target_branch}: {co_res.stderr.strip()}"
+        return f"Failed to checkout {clean_target}: {co_res.stderr.strip()}"
 
     # 3. Merge feature branch
     merge_res = _run_git(["merge", clean_branch, "--no-ff", "-m", f"Merge worktree branch '{clean_branch}'"], cwd=repo)
     if merge_res.returncode != 0:
+        # Abort conflicted merge to preserve clean repository state
+        _run_git(["merge", "--abort"], cwd=repo)
         return (
-            f"Merge conflict or failure merging '{clean_branch}' into '{target_branch}':\n"
+            f"Merge conflict or failure merging '{clean_branch}' into '{clean_target}' (merge aborted):\n"
             f"{merge_res.stderr.strip() or merge_res.stdout.strip()}"
         )
 

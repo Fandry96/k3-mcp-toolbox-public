@@ -325,7 +325,12 @@ def run_agent_loop(
     response = chat.send_message(prompt)
 
     for turn in range(max_turns):
+        if not response.candidates:
+            return f"[Agent loop stopped: no candidates returned (feedback: {getattr(response, 'prompt_feedback', 'none')})]"
+
         candidate = response.candidates[0]
+        if not candidate.content or not candidate.content.parts:
+            return f"[Agent loop stopped: empty candidate content (finish_reason: {getattr(candidate, 'finish_reason', 'unknown')})]"
 
         # Collect all function calls (handles parallel calls)
         function_calls = [

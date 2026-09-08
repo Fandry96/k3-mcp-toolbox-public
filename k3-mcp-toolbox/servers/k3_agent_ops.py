@@ -6,11 +6,9 @@ and system health telemetry to autonomous agents without requiring raw shell gra
 """
 
 import os
-import sys
+import json
 import subprocess
-import socket
-from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -50,24 +48,25 @@ def ops_kill_zombies() -> str:
     # Get our own PID and parent PID to prevent suicide
     safe_pids = {CURRENT_PID, os.getppid()}
 
+    # Target only test drivers and headless automation instances (protects regular user browser windows)
     cmd = (
-        "Get-Process -IncludeUserName -ErrorAction SilentlyContinue | "
-        "Where-Object { $_.ProcessName -in 'chromedriver','msedgedriver','chrome','msedge' } | "
-        "Select-Object Id, ProcessName, WorkingSet64 | ConvertTo-Json"
+        "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | "
+        "Where-Object { "
+        "  ($_.ProcessName -in 'chromedriver.exe','msedgedriver.exe') -or "
+        "  (($_.ProcessName -in 'chrome.exe','msedge.exe') -and ($_.CommandLine -match '(--headless|--test-type|--remote-debugging-port)')) "
+        "} | "
+        "Select-Object @{Name='Id';Expression={$_.ProcessId}}, ProcessName, @{Name='WorkingSet64';Expression={$_.WorkingSetSize}} | "
+        "ConvertTo-Json"
     )
     raw = _run_powershell(cmd)
     if not raw or raw == "null":
         return "Clean: No zombie browser or driver processes detected."
 
-    import json
     try:
         data = json.loads(raw)
-        if isinstance(data, dict):
-            procs = [data]
-        else:
-            procs = data
+        procs = [data] if isinstance(data, dict) else data
     except Exception:
-        # Fallback to simple Stop-Process
+        # Fallback to driver-only Stop-Process
         kill_cmd = "Stop-Process -Name chromedriver,msedgedriver -Force -ErrorAction SilentlyContinue"
         _run_powershell(kill_cmd)
         return "Cleaned: Terminated any hung chromedriver / msedgedriver instances."
@@ -115,7 +114,15 @@ def ops_check_ports(ports: Optional[List[int]] = None) -> str:
     if not ports:
         ports = [3000, 5173, 8080, 8081, 9222, 26646]
 
-    ports_str = ",".join(str(p) for p in ports)
+    try:
+        valid_ports = [int(p) for p in ports if 1 <= int(p) <= 65535]
+    except (ValueError, TypeError):
+        return "Error: ports must be a list of integer port numbers between 1 and 65535."
+
+    if not valid_ports:
+        return "Error: No valid port numbers provided (must be between 1 and 65535)."
+
+    ports_str = ",".join(str(p) for p in valid_ports)
     cmd = (
         f"$targetPorts = @({ports_str}); "
         "Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | "
@@ -135,7 +142,6 @@ def ops_check_ports(ports: Optional[List[int]] = None) -> str:
     if not raw or raw == "null":
         return f"All probed ports ({ports_str}) are FREE and available."
 
-    import json
     try:
         data = json.loads(raw)
         items = [data] if isinstance(data, dict) else data
@@ -218,7 +224,6 @@ def ops_system_health() -> str:
         "} | ConvertTo-Json"
     )
     raw = _run_powershell(cmd)
-    import json
     try:
         d = json.loads(raw)
         total_ram = d.get("Total_RAM_GB", 0)

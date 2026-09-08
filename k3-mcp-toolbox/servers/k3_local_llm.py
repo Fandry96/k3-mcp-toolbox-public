@@ -6,10 +6,9 @@ Provides auto-starting, model discovery, and health telemetry.
 """
 
 import os
-import sys
+import atexit
 import subprocess
 import time
-import json
 import socket
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -19,7 +18,7 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("k3-local-llm")
 
-TOOLBOX_DIR = Path(r"C:\K3_Firehose\k3-mcp-toolbox-public\k3-mcp-toolbox").resolve()
+TOOLBOX_DIR = Path(os.environ.get("K3_TOOLBOX_DIR", Path(__file__).resolve().parent.parent)).resolve()
 LLAMA_BIN_DIR = TOOLBOX_DIR / "src" / "llama_cpp_server"
 LLAMA_EXE = LLAMA_BIN_DIR / "llama-server.exe"
 MODELS_DIR = TOOLBOX_DIR / "src" / "models"
@@ -30,6 +29,20 @@ DEFAULT_PORT = 8081
 _SERVER_PROC: Optional[subprocess.Popen] = None
 _ACTIVE_MODEL: Optional[str] = None
 _ACTIVE_PORT: int = DEFAULT_PORT
+
+
+def _cleanup_server_proc():
+    """Ensures child llama-server process terminates when MCP server exits."""
+    global _SERVER_PROC
+    if _SERVER_PROC and _SERVER_PROC.poll() is None:
+        try:
+            _SERVER_PROC.terminate()
+            _SERVER_PROC.wait(timeout=3)
+        except Exception:
+            _SERVER_PROC.kill()
+
+
+atexit.register(_cleanup_server_proc)
 
 
 def _is_port_open(port: int, host: str = "127.0.0.1") -> bool:
@@ -135,8 +148,11 @@ def local_server_start(
     if _check_health(port):
         return f"Server already online and healthy at http://127.0.0.1:{port} (Model: {_ACTIVE_MODEL or 'active'})."
 
+    if port < 1 or port > 65535:
+        return "Error: Port must be an integer between 1 and 65535."
+
     if not LLAMA_EXE.exists():
-        return f"Error: llama-server.exe missing at {LLAMA_EXE}"
+        return f"Error: llama-server.exe binary not found at {LLAMA_EXE}"
 
     # Resolve target model
     target_model_path = DEFAULT_MODEL
@@ -164,8 +180,8 @@ def local_server_start(
     try:
         _SERVER_PROC = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             cwd=str(LLAMA_BIN_DIR),
         )
         _ACTIVE_MODEL = target_model_path.name

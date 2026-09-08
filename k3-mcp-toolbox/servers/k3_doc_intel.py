@@ -7,7 +7,6 @@ Supports isolated per-project document indices (.agents/doc_index.pkl).
 """
 
 import os
-import sys
 import pickle
 import hashlib
 import time
@@ -22,7 +21,12 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("k3-doc-intel")
 
-DEFAULT_GLOBAL_INDEX = Path(r"C:\K3_Firehose\k3-mcp-toolbox-public\k3-mcp-toolbox\src\doc_index.pkl")
+DEFAULT_GLOBAL_INDEX = Path(
+    os.environ.get(
+        "K3_DOC_INDEX",
+        Path(__file__).resolve().parent.parent / "src" / "doc_index.pkl"
+    )
+).resolve()
 TARGET_DIMENSION = 768
 MODEL = "models/gemini-embedding-001"
 
@@ -37,12 +41,16 @@ def _get_api_key() -> str:
 def _embed_single(text: str) -> np.ndarray:
     """Embeds text using gemini-embedding-001 (768 MRL dimensions, L2 normalized)."""
     api_key = _get_api_key()
-    url = f"https://generativelanguage.googleapis.com/v1beta/{MODEL}:embedContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/{MODEL}:embedContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key,
+    }
     payload = {
         "model": MODEL,
         "content": {"parts": [{"text": text[:8000]}]},
     }
-    r = requests.post(url, json=payload, timeout=20)
+    r = requests.post(url, headers=headers, json=payload, timeout=20)
     r.raise_for_status()
     raw = r.json()["embedding"]["values"]
 
@@ -56,12 +64,10 @@ def _embed_single(text: str) -> np.ndarray:
 
 
 def _resolve_index_path(project_dir: Optional[str] = None) -> Path:
-    """Resolves target doc_index.pkl path."""
+    """Resolves target doc_index.pkl path without disk side-effects."""
     if project_dir:
         p = Path(project_dir).resolve()
-        agents_dir = p / ".agents"
-        agents_dir.mkdir(parents=True, exist_ok=True)
-        return agents_dir / "doc_index.pkl"
+        return p / ".agents" / "doc_index.pkl"
     return DEFAULT_GLOBAL_INDEX
 
 
@@ -224,6 +230,7 @@ def doc_chunk_and_embed(
             return f"Error embedding chunk {i} of {p.name}: {e}"
 
     # Save index
+    idx_path.parent.mkdir(parents=True, exist_ok=True)
     with open(idx_path, "wb") as f:
         pickle.dump(index, f)
 
@@ -250,6 +257,9 @@ def doc_search(
         top_k: Number of relevant chunks to retrieve (default: 5).
         project_dir: Optional project directory to search within.
     """
+    if not query or not query.strip():
+        return "Error: Search query cannot be empty."
+
     idx_path = _resolve_index_path(project_dir)
     if not idx_path.exists():
         return f"No document index found at {idx_path}. Use doc_chunk_and_embed first."
@@ -268,13 +278,18 @@ def doc_search(
     except Exception as e:
         return f"Failed to embed query: {e}"
 
-    keys = list(index.keys())
-    matrix = np.vstack([index[k]["vector"] for k in keys])
-    scores = np.dot(matrix, q_vec)
+    top_k = min(max(1, top_k), 50)
 
-    actual_k = min(top_k, len(keys))
-    partition_indices = np.argpartition(scores, -actual_k)[-actual_k:]
-    sorted_indices = partition_indices[np.argsort(-scores[partition_indices])]
+    try:
+        keys = list(index.keys())
+        matrix = np.vstack([index[k]["vector"] for k in keys])
+        scores = np.dot(matrix, q_vec)
+
+        actual_k = min(top_k, len(keys))
+        partition_indices = np.argpartition(scores, -actual_k)[-actual_k:]
+        sorted_indices = partition_indices[np.argsort(-scores[partition_indices])]
+    except Exception as e:
+        return f"Failed to compute document similarity: {e}"
 
     results = []
     for rank, idx in enumerate(sorted_indices, 1):

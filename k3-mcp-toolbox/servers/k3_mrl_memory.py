@@ -20,7 +20,12 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("k3-mrl-memory")
 
 # Paths
-DEFAULT_INDEX_PATH = Path(r"C:\K3_Firehose\k3-mcp-toolbox-public\k3-mcp-toolbox\src\mrl_index.pkl")
+DEFAULT_INDEX_PATH = Path(
+    os.environ.get(
+        "K3_MRL_INDEX_PATH",
+        Path(__file__).resolve().parent.parent / "src" / "mrl_index.pkl"
+    )
+).resolve()
 TARGET_DIMENSION = 768
 MODEL = "models/gemini-embedding-001"
 
@@ -41,12 +46,16 @@ def _get_api_key() -> str:
 def _embed_query(query: str) -> np.ndarray:
     """Embeds a query using gemini-embedding-001 with MRL 768 truncation and L2 normalization."""
     api_key = _get_api_key()
-    url = f"https://generativelanguage.googleapis.com/v1beta/{MODEL}:embedContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/{MODEL}:embedContent"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key,
+    }
     payload = {
         "model": MODEL,
         "content": {"parts": [{"text": query[:8000]}]},
     }
-    r = requests.post(url, json=payload, timeout=20)
+    r = requests.post(url, headers=headers, json=payload, timeout=20)
     r.raise_for_status()
     raw_vec = r.json()["embedding"]["values"]
 
@@ -118,6 +127,9 @@ def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -
         top_k: Number of results to return (default: 10, max: 50)
         filter_type: Optional category filter: 'skill', 'knowledge', 'research', 'brain', 'book'
     """
+    if not query or not query.strip():
+        return "Error: Search query cannot be empty."
+
     try:
         index, matrix, keys = _ensure_index()
     except Exception as e:
