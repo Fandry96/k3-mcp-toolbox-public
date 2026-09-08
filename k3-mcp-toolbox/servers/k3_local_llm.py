@@ -104,6 +104,92 @@ def local_models_list() -> str:
     return "\n".join(lines)
 
 
+CURATED_MODELS: Dict[str, Dict[str, Any]] = {
+    "bge-small-en": {
+        "name": "bge-small-en-v1.5-q8_0.gguf",
+        "url": "https://huggingface.co/CompendiumLabs/bge-small-en-v1.5-gguf/resolve/main/bge-small-en-v1.5-q8_0.gguf",
+        "type": "embedding",
+        "size_mb": 35.5,
+        "description": "Ultra-compact 384-dim embedding model (only 35MB). Recommended for fast offline RAG.",
+    },
+    "qwen2.5-0.5b": {
+        "name": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        "type": "generative",
+        "size_mb": 398.0,
+        "description": "Ultra-lightweight 0.5B instruction-tuned model for local completions.",
+    },
+    "smollm2-360m": {
+        "name": "smollm2-360m-instruct-q8_0.gguf",
+        "url": "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q8_0.gguf",
+        "type": "generative",
+        "size_mb": 387.0,
+        "description": "HuggingFace SmolLM2 compact instruction model.",
+    },
+}
+
+
+@mcp.tool()
+def local_model_download(model_key_or_url: str = "list") -> str:
+    """
+    Downloads a GGUF model into the K3 models directory for offline inference.
+    Pass 'list' to see available curated models, or specify a model key
+    ('bge-small-en', 'qwen2.5-0.5b', 'smollm2-360m') or direct HTTPS .gguf URL.
+    """
+    cleaned = model_key_or_url.strip()
+    if cleaned.lower() == "list" or (cleaned not in CURATED_MODELS and not cleaned.startswith("http")):
+        lines = [
+            "=== Curated Downloadable Models ===",
+            "Specify one of the keys below to download, or pass a direct HTTPS URL to a .gguf file:\n",
+        ]
+        for k, info in CURATED_MODELS.items():
+            lines.append(f"• Key: {k:<15} | Size: {info['size_mb']:>5.1f} MB | Type: {info['type'].upper()}")
+            lines.append(f"  Description: {info['description']}")
+            lines.append(f"  Filename:    {info['name']}\n")
+        return "\n".join(lines)
+
+    if cleaned in CURATED_MODELS:
+        info = CURATED_MODELS[cleaned]
+        target_name = info["name"]
+        download_url = info["url"]
+        target_dir = MODELS_DIR / cleaned
+    else:
+        # Direct URL
+        download_url = cleaned
+        target_name = download_url.split("/")[-1].split("?")[0]
+        if not target_name.endswith(".gguf"):
+            return "Error: URL must point to a file ending in .gguf"
+        target_dir = MODELS_DIR / "custom"
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / target_name
+    tmp_path = target_dir / f"{target_name}.tmp"
+
+    if target_path.exists():
+        sz = target_path.stat().st_size / (1024 * 1024)
+        return f"Model already installed at {target_path} ({sz:.1f} MB)."
+
+    try:
+        sys.stderr.write(f"Downloading {target_name} from {download_url}...\n")
+        with requests.get(download_url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            total_bytes = int(r.headers.get("content-length", 0))
+            downloaded = 0
+            with open(tmp_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+        if tmp_path.exists():
+            tmp_path.rename(target_path)
+        sz_mb = target_path.stat().st_size / (1024 * 1024)
+        return f"Successfully downloaded {target_name} to {target_path} ({sz_mb:.1f} MB)."
+    except Exception as e:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        return f"Error downloading model: {e}"
+
+
 @mcp.tool()
 def local_server_status(port: int = DEFAULT_PORT) -> str:
     """

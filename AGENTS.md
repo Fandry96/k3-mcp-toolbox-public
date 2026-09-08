@@ -38,13 +38,13 @@ The following optimizations are **already merged into master**:
 4. [x] Gemini 3.8 Flash agentic primitives library (`antigravity-logicware`)
 5. [x] FastMCP Pydantic 2.x `server_version` fix across all servers
 6. [x] `llms.txt` and AI agent onboarding setup guide
+7. [x] Multi-path auto-indexing watcher daemon with Secret Manager fallback (`k3_mrl_watcher.py`)
+8. [x] Curated GGUF model download helper for `k3-local-llm` (`local_model_download`)
 
 ## Priority Next Tasks
 
-1. Create auto-indexing daemon / background watcher for live incremental MRL index updates
-2. Add generative GGUF model download helper for `k3-local-llm` offline completions
-3. Benchmark local llama-server embedding throughput vs Gemini REST API
-4. Add type hints and docstrings throughout legacy modules
+1. Benchmark local llama-server embedding throughput vs Gemini REST API
+2. Add type hints and docstrings throughout legacy modules
 
 ## Rules
 

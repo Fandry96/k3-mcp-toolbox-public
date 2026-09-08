@@ -123,6 +123,14 @@ def test_server_local_llm() -> None:
     status_str = k3_local_llm.local_server_status(port=59999)
     test("Offline port reports OFFLINE status", "OFFLINE" in status_str)
 
+    # Download helper catalog check
+    download_list = k3_local_llm.local_model_download("list")
+    test("local_model_download lists curated models", "Curated Downloadable Models" in download_list and "qwen2.5-0.5b" in download_list)
+
+    # Download helper extension validation
+    invalid_url = k3_local_llm.local_model_download("https://example.com/not-a-gguf.bin")
+    test("local_model_download validates .gguf extension", "Error: URL must point to a file ending in .gguf" in invalid_url)
+
 
 def test_server_worktree_ops() -> None:
     print("\n=== 5. Testing k3-worktree-ops ===")
