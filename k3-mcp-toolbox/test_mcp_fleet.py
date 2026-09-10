@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 Comprehensive Integration Test Suite for K3 MCP Server Fleet.
-Tests all 5 servers:
+Tests all 6 servers:
 1. k3-mrl-memory
 2. k3-agent-ops
 3. k3-doc-intel
 4. k3-local-llm
 5. k3-worktree-ops
+6. k3-forge
 """
 
 import sys
@@ -159,17 +160,93 @@ def test_server_worktree_ops() -> None:
     test("worktree_merge blocks unauthorized verify binary", "Security Error" in unauth_res)
 
 
+def test_server_k3_forge() -> None:
+    print("\n=== 6. Testing k3-forge ===")
+    import k3_forge
+
+    # 1. Instance and FastMCP export
+    test(
+        "k3_forge exports FastMCP instance",
+        hasattr(k3_forge, "mcp") and k3_forge.mcp.name == "k3-forge",
+    )
+
+    # 2. Tool count check (exact requirement: 7 tools)
+    tools = k3_forge.mcp._tool_manager._tools
+    test(
+        "k3_forge registers exactly 7 tools",
+        len(tools) == 7,
+        f"Found {len(tools)} tools",
+    )
+
+    # 3. Tool name registration check
+    expected_tools = {
+        "forge_status",
+        "forge_choreograph",
+        "forge_draft",
+        "forge_lint",
+        "forge_revise",
+        "forge_critique",
+        "forge_describe",
+    }
+    test(
+        "k3_forge registers all 7 expected tool names",
+        expected_tools.issubset(set(tools.keys())),
+    )
+
+    # 4. Status tool execution
+    status_res = k3_forge.forge_status()
+    test(
+        "forge_status returns manuscript report",
+        isinstance(status_res, str)
+        and ("K3 Forge" in status_res or "Status" in status_res)
+        and "hard-country" in status_res,
+    )
+
+    # 5. Deterministic prose lint check (flags dirty prose)
+    dirty_text = "She felt his eyes darken as he smirked seamlessly and bit his lip."
+    lint_res = k3_forge.forge_lint(dirty_text)
+    test(
+        "forge_lint correctly flags violations on test text",
+        isinstance(lint_res, str)
+        and ("violations" in lint_res.lower() or "deny" in lint_res.lower()),
+    )
+
+    # 6. Sensory palette decomposition check
+    desc_res = k3_forge.forge_describe(
+        "The cold iron stove rattled against the pine floor.",
+        channels="tactile,acoustic",
+    )
+    test(
+        "forge_describe returns sensory decomposition",
+        isinstance(desc_res, str)
+        and ("tactile" in desc_res.lower() or "acoustic" in desc_res.lower()),
+    )
+
+    # 7. Choreograph validation on known beat
+    choreo_res = k3_forge.forge_choreograph("beat_06_no_way_2")
+    test(
+        "forge_choreograph generates micro-beat blocking",
+        isinstance(choreo_res, str)
+        and (
+            "territorial_clash" in choreo_res
+            or "Physical Blocking" in choreo_res
+            or "Step" in choreo_res
+        ),
+    )
+
+
 def main() -> None:
     test_server_mrl_memory()
     test_server_agent_ops()
     test_server_doc_intel()
     test_server_local_llm()
     test_server_worktree_ops()
+    test_server_k3_forge()
 
     print(f"\n{'='*50}")
     print(f"FLEET INTEGRATION RESULTS: {passed} passed, {failed} failed out of {passed + failed}")
     if failed == 0:
-        print("ALL 5 K3 MCP SERVERS VERIFIED AND OPERATIONAL!")
+        print("ALL 6 K3 MCP SERVERS VERIFIED AND OPERATIONAL!")
     else:
         print(f"WARNING: {failed} TEST(S) FAILED")
         sys.exit(1)
@@ -177,3 +254,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

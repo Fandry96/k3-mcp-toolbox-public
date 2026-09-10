@@ -13,3 +13,4 @@ __pycache__/
 *.pkl
 *.gguf
 *.bin
+*.bak
