@@ -2,8 +2,8 @@
 """
 k3-forge — Antigravity Narrative Drafting & Prose Quality Gate MCP Server
 Wraps the Proto_book narrative engine for in-IDE interactive novel drafting.
-Exposes 7 tools for status, choreography, drafting, linting, revision, critique,
-and sensory decomposition.
+Exposes 8 tools for status, choreography, drafting, linting, revision, critique,
+sensory decomposition, and repetition scanning.
 """
 
 import os
@@ -11,8 +11,9 @@ import sys
 import json
 import logging
 import hashlib
+import re
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from mcp.server.fastmcp import FastMCP
 
@@ -65,6 +66,13 @@ except ImportError as err:
     BibleKeeper = None
     json_to_toon = None
     load_context_as_toon = None
+
+try:
+    from adk.repetition_scanner import scan_repetitions, format_repetition_markdown
+except ImportError as err:
+    _log.warning(f"Failed importing repetition_scanner: {err}")
+    scan_repetitions = None
+    format_repetition_markdown = None
 
 # ── Server Initialization ─────────────────────────────────────────────────────
 mcp = FastMCP("k3-forge")
@@ -1449,6 +1457,74 @@ def forge_describe(text: str, channels: Optional[str] = None) -> str:
 
     except Exception as exc:
         return f"Error in forge_describe: {exc}"
+
+
+# ── Tool 8: forge_scan_repetitions ───────────────────────────────────────────
+@mcp.tool()
+def forge_scan_repetitions(
+    series_slug: str = "hard-country",
+    window: int = 5,
+) -> str:
+    """Scan draft chapters in a series for cross-chapter repeated phrases and dialogue echoes.
+
+    Args:
+        series_slug: Series directory slug (defaults to 'hard-country').
+        window: Maximum chapter comparison window (defaults to 5).
+
+    Returns:
+        Markdown report detailing repetition severities, phrase matches, dialogue echoes, and hotspot rankings.
+    """
+    try:
+        slug = (series_slug or DEFAULT_SERIES).strip()
+        try:
+            series_dir = _resolve_series_dir(slug)
+        except ValueError as ve:
+            return f"Error: {ve}"
+
+        if not series_dir.exists():
+            return f"Error: Series directory '{slug}' not found on disk at {series_dir}"
+
+        drafts_dir = series_dir / "drafts"
+        if not drafts_dir.exists():
+            return f"Error: Drafts directory not found for series '{slug}' at {drafts_dir}"
+
+        # Collect draft markdown files, ignoring hidden files, underscores, notes, and branches
+        draft_files = [
+            p for p in drafts_dir.glob("*.md")
+            if not p.name.startswith((".", "_"))
+            and "notes" not in p.name.lower()
+            and not p.name.startswith("branches-")
+        ]
+
+        if not draft_files:
+            return f"No draft chapters found in {drafts_dir} to scan."
+
+        # Natural sort chapters by beat/chapter index
+        def _sort_key(p: Path) -> Tuple[int, str]:
+            m = re.search(r"(\d+)", p.name)
+            return (int(m.group(1)) if m else 999999, p.name)
+
+        draft_files.sort(key=_sort_key)
+
+        # Build chapter content mapping
+        chapters_dict = {}
+        for p in draft_files:
+            try:
+                chapters_dict[p.name] = p.read_text(encoding="utf-8")
+            except Exception as e:
+                _log.warning(f"Could not read {p}: {e}")
+
+        if not chapters_dict:
+            return f"Error: Could not read content from chapters in {drafts_dir}"
+
+        if scan_repetitions is None or format_repetition_markdown is None:
+            return "Error: adk.repetition_scanner module could not be imported."
+
+        results = scan_repetitions(chapters_dict, window=window)
+        return format_repetition_markdown(results, series_slug=slug)
+
+    except Exception as exc:
+        return f"Error in forge_scan_repetitions: {exc}"
 
 
 # ── Main Entrypoint ───────────────────────────────────────────────────────────

@@ -61,7 +61,7 @@ def run_empirical_suite():
         
         tools = mcp._tool_manager._tools
         tool_count = len(tools)
-        record_test(f"Tool count exactly 7 (actual: {tool_count})", tool_count == 7)
+        record_test(f"Tool count exactly 8 (actual: {tool_count})", tool_count == 8)
         
         expected_tools = {
             "forge_status",
@@ -71,11 +71,12 @@ def run_empirical_suite():
             "forge_revise",
             "forge_critique",
             "forge_describe",
+            "forge_scan_repetitions",
         }
         actual_tools = set(tools.keys())
         missing = expected_tools - actual_tools
         extra = actual_tools - expected_tools
-        record_test("All 7 required tools registered", missing == set() and extra == set(), f"Missing: {missing}, Extra: {extra}")
+        record_test("All 8 required tools registered", missing == set() and extra == set(), f"Missing: {missing}, Extra: {extra}")
     except Exception as exc:
         record_test("Import k3_forge without exception", False, str(exc))
         return
@@ -89,6 +90,7 @@ def run_empirical_suite():
         forge_revise,
         forge_critique,
         forge_describe,
+        forge_scan_repetitions,
     )
 
     # --- 2. forge_status Edge Cases ---
@@ -222,6 +224,20 @@ def run_empirical_suite():
     from servers.k3_forge import _get_beat_engine
     engine = _get_beat_engine()
     record_test("BeatEngine loads pacing matrix successfully", engine is not None and len(engine._sequence) > 0)
+
+    # --- 9. Tool: forge_scan_repetitions ---
+    print("\n--- 9. Tool: forge_scan_repetitions ---")
+    rep_valid = forge_scan_repetitions("hard-country", window=5)
+    record_test(
+        "forge_scan_repetitions returns valid report",
+        "# === Cross-Chapter Repetition Scan:" in rep_valid or "Repetition" in rep_valid,
+    )
+
+    rep_invalid = forge_scan_repetitions("non_existent_series_999")
+    record_test(
+        "forge_scan_repetitions handles missing series gracefully",
+        rep_invalid.startswith("Error") or "not found" in rep_invalid,
+    )
 
     print("\n============================================================")
     print(f"RESULTS: {passed} passed, {failed} failed out of {passed + failed}")

@@ -170,11 +170,11 @@ def test_server_k3_forge() -> None:
         hasattr(k3_forge, "mcp") and k3_forge.mcp.name == "k3-forge",
     )
 
-    # 2. Tool count check (exact requirement: 7 tools)
+    # 2. Tool count check (exact requirement: 8 tools)
     tools = k3_forge.mcp._tool_manager._tools
     test(
-        "k3_forge registers exactly 7 tools",
-        len(tools) == 7,
+        "k3_forge registers exactly 8 tools",
+        len(tools) == 8,
         f"Found {len(tools)} tools",
     )
 
@@ -187,9 +187,10 @@ def test_server_k3_forge() -> None:
         "forge_revise",
         "forge_critique",
         "forge_describe",
+        "forge_scan_repetitions",
     }
     test(
-        "k3_forge registers all 7 expected tool names",
+        "k3_forge registers all 8 expected tool names",
         expected_tools.issubset(set(tools.keys())),
     )
 
@@ -232,6 +233,14 @@ def test_server_k3_forge() -> None:
             or "Physical Blocking" in choreo_res
             or "Step" in choreo_res
         ),
+    )
+
+    # 8. Repetition scanner execution
+    rep_res = k3_forge.forge_scan_repetitions("hard-country", window=5)
+    test(
+        "forge_scan_repetitions executes and returns report",
+        isinstance(rep_res, str)
+        and ("Repetition Scan" in rep_res or "Status" in rep_res),
     )
 
 
