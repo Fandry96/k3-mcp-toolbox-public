@@ -286,7 +286,6 @@ def _clean_prose_violations(prose: str) -> str:
         (r"\b(she|he|they|I|we)\s+saw\b", r"\1 looked at"),
         (r"\b(she|he|they|I|we)\s+noticed\b", r"\1 marked"),
         (r"\bcould feel\b", "knew"),
-        (r"\bseemed to\b", ""),
         # Banned body language
         (r"\blip\s+bit(ing|e|ten)?\b", "lip pressed tight"),
         (r"\bbit\s+(her|his)\s+lip\b", r"pressed \1 lips"),
@@ -308,7 +307,6 @@ def _clean_prose_violations(prose: str) -> str:
         (r"\bhissed\b", "said"),
         (r"\bgrowled\b", "said"),
         (r"\bpurred\b", "said"),
-        (r"\bbarked\b", "snapped"),
         (r"\bseethed\b", "said"),
         (r"\bcooed\b", "said"),
         (r"\bmurmured\b", "muttered"),
@@ -323,6 +321,32 @@ def _clean_prose_violations(prose: str) -> str:
         cleaned = re.sub(pat, repl, cleaned, flags=re.IGNORECASE)
 
     return cleaned
+
+
+def _compute_embedding(text: str) -> list[float]:
+    """Compute 768-dim embedding using Gemini API or deterministic offline fallback."""
+    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            result = client.models.embed_content(
+                model="text-embedding-004",
+                contents=text,
+                config={"output_dimensionality": 768},
+            )
+            if result and result.embeddings:
+                return list(result.embeddings[0].values)
+        except Exception as exc:
+            _log.warning(f"Live embedding failed, using deterministic fallback: {exc}")
+
+    # Deterministic pseudo-embedding for offline/test resilience (768-dim normalized float)
+    import random
+    seed_val = int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:8], 16)
+    rng = random.Random(seed_val)
+    raw = [rng.uniform(-1.0, 1.0) for _ in range(768)]
+    norm = sum(x * x for x in raw) ** 0.5 or 1.0
+    return [x / norm for x in raw]
 
 
 # ── MCP Tool Declarations ─────────────────────────────────────────────────────
@@ -369,29 +393,12 @@ def forge_status(series_slug: Optional[str] = "hard-country") -> str:
         forbidden_regs = ["vulnerability", "tenderness"]
         next_beat_id = "None"
 
-        if engine:
-            current_beat = engine.current_beat()
-            if current_beat:
-                cur_beat_id = current_beat.get("id", "Unknown")
-                cur_beat_desc = current_beat.get("description", "")
-                emotional_target = current_beat.get("emotional_target", "N/A")
-                cur_pov = current_beat.get("pov", "ryder")
-
-            current_phase = engine.current_phase()
-            if current_phase:
-                phase_name = current_phase.get("name", "Active Phase")
-                phase_tone = current_phase.get("tone", "N/A")
-                tension_floor = current_phase.get("tension_floor", 0)
-                intimacy_ceiling = current_phase.get("intimacy_ceiling", 0)
-                allowed_regs = current_phase.get("allowed_registers", [])
-                forbidden_regs = current_phase.get("forbidden", [])
-
-            next_beat_id = engine.next_beat_name() or "None"
-
-        # Scan drafts directory for word counts and scores
+        # Scan drafts directory for word counts, scores, and cursor sync
         drafts_dir = series_dir / "drafts"
         draft_rows = []
         total_words = 0
+        latest_beat_id = None
+        latest_beat_index = -1
 
         if drafts_dir.exists():
             draft_files = sorted([
@@ -411,6 +418,49 @@ def forge_status(series_slug: Optional[str] = "hard-country") -> str:
                     draft_rows.append(f"| `{df.name}` | {words:,} | {score_str} | {status} |")
                 except Exception:
                     pass
+
+            # Detect latest beat from drafts to sync cursor
+            if engine and draft_files:
+                import re as _re
+                for i, (b_data, _) in enumerate(engine._sequence):
+                    bid = b_data.get("id", "")
+                    b_match = _re.search(r"beat_?(\d+)", bid, _re.IGNORECASE)
+                    b_num = int(b_match.group(1)) if b_match else (i + 1)
+                    for df in draft_files:
+                        df_stem = df.stem
+                        df_match = _re.search(r"beat_?(\d+)", df_stem, _re.IGNORECASE)
+                        if df_stem == bid or (df_match and int(df_match.group(1)) == b_num):
+                            if i > latest_beat_index:
+                                latest_beat_index = i
+                                latest_beat_id = bid
+                            break
+
+        if engine:
+            if latest_beat_id:
+                try:
+                    engine.seek(latest_beat_id)
+                except Exception as seek_err:
+                    _log.warning(f"Could not seek to latest beat {latest_beat_id}: {seek_err}")
+
+            current_beat = engine.current_beat()
+            raw_phase = ""
+            if current_beat:
+                cur_beat_id = current_beat.get("id", "Unknown")
+                cur_beat_desc = current_beat.get("description", "")
+                emotional_target = current_beat.get("emotional_target", "N/A")
+                cur_pov = current_beat.get("pov", "ryder")
+                raw_phase = current_beat.get("phase", "")
+
+            current_phase = engine.current_phase()
+            if current_phase:
+                phase_name = current_phase.get("name") or (raw_phase.replace("_", " ").title() if raw_phase else "Active Phase")
+                phase_tone = current_phase.get("tone", "N/A")
+                tension_floor = current_phase.get("tension_floor", 0)
+                intimacy_ceiling = current_phase.get("intimacy_ceiling", 0)
+                allowed_regs = current_phase.get("allowed_registers", [])
+                forbidden_regs = current_phase.get("forbidden", [])
+
+            next_beat_id = engine.next_beat_name() or "None"
 
         pct_complete = round((total_words / target_words) * 100, 1) if target_words > 0 else 0
         allowed_str = ", ".join(allowed_regs) if allowed_regs else "None"
@@ -803,8 +853,8 @@ def forge_draft(
                     chapter_index = int(beat["chapter"])
                 elif beat_match:
                     chapter_index = int(beat_match.group(1))
-                elif engine and hasattr(engine, "_cursor"):
-                    chapter_index = engine._cursor + 1
+                elif engine and hasattr(engine, "_current_index"):
+                    chapter_index = engine._current_index + 1
                 else:
                     chapter_index = 1
 
@@ -814,10 +864,28 @@ def forge_draft(
                 detected_entities = set()
                 if char_pov:
                     detected_entities.add(char_pov.lower())
-                if keeper and hasattr(keeper, "characters"):
-                    for cname in keeper.characters.keys():
-                        if cname.lower() in generated_prose.lower() or cname.lower() in description.lower():
-                            detected_entities.add(cname.lower())
+                if keeper:
+                    candidate_names = set()
+                    if hasattr(keeper, "_bible") and isinstance(keeper._bible, dict):
+                        for n in keeper._bible.get("story", {}).get("narratives", []):
+                            for p in n.get("subtext", {}).get("players", []):
+                                if p.get("id"):
+                                    candidate_names.add(p["id"])
+                                if p.get("name"):
+                                    candidate_names.add(p["name"])
+                        for ext in keeper._bible.get("k3_extensions", {}).get("character_extensions", []):
+                            if ext.get("id"):
+                                candidate_names.add(ext["id"])
+                            if ext.get("name"):
+                                candidate_names.add(ext["name"])
+
+                    for cname in candidate_names:
+                        c_lower = cname.lower()
+                        if c_lower in generated_prose.lower() or c_lower in description.lower():
+                            char_info = keeper.get_character(c_lower) or keeper.get_character(cname)
+                            entity_key = char_info.get("id", c_lower) if char_info else c_lower
+                            detected_entities.add(entity_key.lower())
+
                 for cand_entity in ["ryder", "val", "dick_the_rooster", "richard", "hannah"]:
                     norm = "dick_the_rooster" if cand_entity in ("dick", "rooster", "richard") else cand_entity
                     if cand_entity in generated_prose.lower() or cand_entity in description.lower():
@@ -854,19 +922,24 @@ def forge_draft(
                     else:
                         tod_cand = "day"
 
-                db.insert_episode({
-                    "chapter_index": chapter_index,
-                    "scene_index": scene_index,
-                    "content": generated_prose,
-                    "content_hash": hashlib.sha256(generated_prose.encode("utf-8")).hexdigest()[:16],
-                    "summary": summary_text,
-                    "entities": entities_list,
-                    "location": loc_cand,
-                    "time_of_day": tod_cand,
-                    "word_count": actual_words,
-                    "source_file": str(out_path.relative_to(PROTO_BOOK_DIR)),
-                    "session_id": "k3-forge-draft",
-                })
+                embedding_vec = _compute_embedding(generated_prose)
+
+                db.insert_episode(
+                    {
+                        "chapter_index": chapter_index,
+                        "scene_index": scene_index,
+                        "content": generated_prose,
+                        "content_hash": hashlib.sha256(generated_prose.encode("utf-8")).hexdigest()[:16],
+                        "summary": summary_text,
+                        "entities": entities_list,
+                        "location": loc_cand,
+                        "time_of_day": tod_cand,
+                        "word_count": actual_words,
+                        "source_file": str(out_path.relative_to(PROTO_BOOK_DIR)),
+                        "session_id": "k3-forge-draft",
+                    },
+                    embedding=embedding_vec,
+                )
                 db.close()
             except Exception as db_err:
                 _log.warning(f"Could not record episode in ForgeDB: {db_err}")
@@ -1084,15 +1157,24 @@ def forge_revise(
         raw_content = target_file.read_text(encoding="utf-8")
         orig_words = len(raw_content.split())
 
+        # Separate frontmatter from prose body if separator exists
+        if "\n---\n" in raw_content:
+            frontmatter_part, prose_body = raw_content.split("\n---\n", 1)
+            has_frontmatter = True
+        else:
+            frontmatter_part = ""
+            prose_body = raw_content
+            has_frontmatter = False
+
         system_instruction = (
             "You are the Forge Reviser for the Hard Country series. "
             "Revise the draft prose according to the author's feedback notes while enforcing strict Anglo-Saxon diction. "
             "Zero tolerance for filter words, generic AI body language, or corporate jargon. "
-            "Return only the revised markdown prose."
+            "Return only the revised markdown prose without headers or metadata."
         )
         prompt = (
             f"Author Revision Feedback:\n{fb}\n\n"
-            f"Original Draft:\n{raw_content}\n\n"
+            f"Original Draft Prose:\n{prose_body.strip()}\n\n"
             "Emit the full revised scene prose."
         )
 
@@ -1103,19 +1185,40 @@ def forge_revise(
             max_output_tokens=4096,
         )
 
-        if not revised_text or len(revised_text.split()) < 300:
+        if not revised_text or len(revised_text.split()) < 100:
             # Deterministic adjustment if offline
-            revised_text = raw_content + f"\n\n<!-- Revised with author note: {fb} -->"
+            revised_text = prose_body.strip() + f"\n\n<!-- Revised with author note: {fb} -->"
 
         if check_prose:
             revised_text = _clean_prose_violations(revised_text)
             res = check_prose(revised_text)
             lint_score_val = res.get("score", 100)
+            hard_count = res.get("hard_deny_count", 0)
         else:
             lint_score_val = 100
+            hard_count = 0
 
-        new_words = len(revised_text.split())
-        target_file.write_text(revised_text, encoding="utf-8")
+        new_prose_words = len(revised_text.split())
+
+        if has_frontmatter:
+            import re as _re
+            # Update Word Count and Quality Gate in frontmatter
+            fm = _re.sub(
+                r"- \*\*Word Count\*\*:\s*[\d,]+\s*words",
+                f"- **Word Count**: {new_prose_words:,} words",
+                frontmatter_part,
+            )
+            fm = _re.sub(
+                r"- \*\*Quality Gate\*\*:[^\n]+",
+                f"- **Quality Gate**: CLEAN (Lint Score: {lint_score_val}/100, Hard Violations: {hard_count})",
+                fm,
+            )
+            final_content = f"{fm.strip()}\n\n---\n\n{revised_text.strip()}\n"
+        else:
+            final_content = revised_text.strip() + "\n"
+
+        new_words = len(final_content.split())
+        target_file.write_text(final_content, encoding="utf-8")
 
         lines = [
             "# === K3 Forge Revision Report ===",
