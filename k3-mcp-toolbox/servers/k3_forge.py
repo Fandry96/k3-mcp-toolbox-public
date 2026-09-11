@@ -143,11 +143,15 @@ def _resolve_draft_target(
         try:
             resolved.relative_to(drafts_resolved)
         except ValueError:
+            if allow_raw_text and not resolved.exists() and " " in clean:
+                return None, clean
             raise ValueError(
                 f"Path traversal rejected: absolute path '{clean}' resolves outside "
                 f"authorized drafts directory ('{drafts_resolved}')"
             )
         if must_exist and not resolved.is_file():
+            if allow_raw_text:
+                return None, clean
             return None, None
         return resolved, None
 
@@ -171,6 +175,8 @@ def _resolve_draft_target(
         if must_exist:
             if candidate.exists() and candidate.is_file():
                 return candidate, None
+            if allow_raw_text:
+                return None, clean
             return None, None
         return candidate, None
 
@@ -193,7 +199,12 @@ def _resolve_draft_target(
 
     # Glob search for beat IDs within drafts_dir
     if "/" not in clean and "\\" not in clean and drafts_dir.exists():
-        for matched in drafts_dir.glob(f"*{clean}*.md"):
+        try:
+            matches = list(drafts_dir.glob(f"*{clean}*.md"))
+        except (ValueError, re.error):
+            matches = []
+
+        for matched in matches:
             m_res = matched.resolve()
             try:
                 m_res.relative_to(drafts_resolved)
@@ -1152,15 +1163,12 @@ def forge_lint(target: str, series_slug: Optional[str] = "hard-country") -> str:
         drafts_dir = series_dir / "drafts"
 
         clean_target = target.strip()
-        try:
-            target_file, raw_text = _resolve_draft_target(
-                clean_target,
-                drafts_dir,
-                must_exist=True,
-                allow_raw_text=True,
-            )
-        except ValueError:
-            raise
+        target_file, raw_text = _resolve_draft_target(
+            clean_target,
+            drafts_dir,
+            must_exist=True,
+            allow_raw_text=True,
+        )
 
         if target_file:
             content = target_file.read_text(encoding="utf-8")
@@ -1205,8 +1213,6 @@ def forge_lint(target: str, series_slug: Optional[str] = "hard-country") -> str:
 
         return "\n".join(lines)
 
-    except ValueError:
-        raise
     except Exception as exc:
         return f"Error in forge_lint: {exc}"
 
@@ -1238,15 +1244,12 @@ def forge_revise(
         drafts_dir = series_dir / "drafts"
 
         clean_target = target.strip()
-        try:
-            target_file, _ = _resolve_draft_target(
-                clean_target,
-                drafts_dir,
-                must_exist=True,
-                allow_raw_text=False,
-            )
-        except ValueError:
-            raise
+        target_file, _ = _resolve_draft_target(
+            clean_target,
+            drafts_dir,
+            must_exist=True,
+            allow_raw_text=False,
+        )
 
         if not target_file:
             return f"Error: Target file for revision not found on disk: '{target}'."
@@ -1331,8 +1334,6 @@ def forge_revise(
 
         return "\n".join(lines)
 
-    except ValueError:
-        raise
     except Exception as exc:
         return f"Error in forge_revise: {exc}"
 
@@ -1355,15 +1356,12 @@ def forge_critique(target: str, series_slug: Optional[str] = "hard-country") -> 
         drafts_dir = series_dir / "drafts"
 
         clean_target = target.strip()
-        try:
-            target_file, raw_text = _resolve_draft_target(
-                clean_target,
-                drafts_dir,
-                must_exist=True,
-                allow_raw_text=True,
-            )
-        except ValueError:
-            raise
+        target_file, raw_text = _resolve_draft_target(
+            clean_target,
+            drafts_dir,
+            must_exist=True,
+            allow_raw_text=True,
+        )
 
         if target_file:
             content = target_file.read_text(encoding="utf-8")
@@ -1443,8 +1441,6 @@ def forge_critique(target: str, series_slug: Optional[str] = "hard-country") -> 
 
         return "\n".join(lines)
 
-    except ValueError:
-        raise
     except Exception as exc:
         return f"Error in forge_critique: {exc}"
 

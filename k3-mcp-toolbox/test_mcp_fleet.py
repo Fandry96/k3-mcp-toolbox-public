@@ -203,13 +203,17 @@ def test_server_k3_forge() -> None:
         and "hard-country" in status_res,
     )
 
-    # 5. Deterministic prose lint check (flags dirty prose)
+    # 5. Deterministic prose lint check (flags dirty prose, slash raw text fallback & glob sanitization)
     dirty_text = "She felt his eyes darken as he smirked seamlessly and bit his lip."
     lint_res = k3_forge.forge_lint(dirty_text)
+    slash_prose_res = k3_forge.forge_lint("/This is raw prose that starts with a slash")
+    glob_bracket_res = k3_forge.forge_lint("[unclosed-bracket")
     test(
         "forge_lint correctly flags violations on test text",
         isinstance(lint_res, str)
-        and ("violations" in lint_res.lower() or "deny" in lint_res.lower()),
+        and ("violations" in lint_res.lower() or "deny" in lint_res.lower())
+        and "Prose Quality Lint Report" in slash_prose_res
+        and "Prose Quality Lint Report" in glob_bracket_res,
     )
 
     # 6. Sensory palette decomposition check
@@ -244,18 +248,20 @@ def test_server_k3_forge() -> None:
     )
 
     # 9. Path traversal protection on forge_revise (dirty input: relative traversal)
-    try:
-        k3_forge.forge_revise("../../etc/passwd", feedback="test")
-        test("forge_revise blocks dirty path traversal", False, "Expected ValueError")
-    except ValueError:
-        test("forge_revise blocks dirty path traversal", True)
+    res_revise = k3_forge.forge_revise("../../etc/passwd", feedback="test")
+    test(
+        "forge_revise blocks dirty path traversal",
+        isinstance(res_revise, str)
+        and ("Error in forge_revise:" in res_revise or "Directory traversal rejected" in res_revise),
+    )
 
     # 10. Path traversal protection on forge_lint (dirty input: absolute path outside drafts)
-    try:
-        k3_forge.forge_lint("C:\\Windows\\win.ini")
-        test("forge_lint blocks absolute path traversal", False, "Expected ValueError")
-    except ValueError:
-        test("forge_lint blocks absolute path traversal", True)
+    res_lint = k3_forge.forge_lint("C:\\Windows\\win.ini")
+    test(
+        "forge_lint blocks absolute path traversal",
+        isinstance(res_lint, str)
+        and ("Error in forge_lint:" in res_lint or "Path traversal rejected" in res_lint),
+    )
 
     # 11. Clean authorized draft access on forge_lint (clean input)
     lint_clean_file = k3_forge.forge_lint("beat_06_no_way_2.md")
@@ -265,11 +271,12 @@ def test_server_k3_forge() -> None:
     )
 
     # 12. Path traversal protection on forge_critique (dirty input: relative traversal)
-    try:
-        k3_forge.forge_critique("../../etc/passwd")
-        test("forge_critique blocks dirty path traversal", False, "Expected ValueError")
-    except ValueError:
-        test("forge_critique blocks dirty path traversal", True)
+    res_critique = k3_forge.forge_critique("../../etc/passwd")
+    test(
+        "forge_critique blocks dirty path traversal",
+        isinstance(res_critique, str)
+        and ("Error in forge_critique:" in res_critique or "Directory traversal rejected" in res_critique),
+    )
 
     # 13. Clean authorized draft access on forge_critique (clean input)
     crit_clean_file = k3_forge.forge_critique("beat_06_no_way_2.md")

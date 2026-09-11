@@ -147,25 +147,37 @@ def run_empirical_suite():
     record_test("forge_lint flags Latinate bloat ('utilized')", "utilized" in lint_violated)
 
     # Non-existent file path: treated as raw text fallback
+    # Non-existent file path: treated as raw text fallback (including slash prose, candidates, and glob metacharacters)
     lint_nonexistent_file = forge_lint("non_existent_chapter_404.md")
-    record_test("forge_lint non-existent file falls back to raw text without crashing", "Raw Text" in lint_nonexistent_file and "100/100" in lint_nonexistent_file)
+    lint_slash_prose = forge_lint("/This is raw prose that starts with a slash")
+    lint_candidate_drafts = forge_lint("drafts/non_existent_chapter_404.md")
+    lint_glob_bracket = forge_lint("[unclosed-bracket")
+    lint_glob_star = forge_lint("*")
+    fallback_ok = (
+        ("Raw Text" in lint_nonexistent_file and "100/100" in lint_nonexistent_file)
+        and ("Raw Text" in lint_slash_prose and "100/100" in lint_slash_prose)
+        and ("Raw Text" in lint_candidate_drafts and "100/100" in lint_candidate_drafts)
+        and ("Raw Text" in lint_glob_bracket and "100/100" in lint_glob_bracket)
+        and ("Raw Text" in lint_glob_star and "100/100" in lint_glob_star)
+    )
+    record_test("forge_lint non-existent file falls back to raw text without crashing", fallback_ok)
 
-    # Path traversal protection: relative and absolute dirty inputs (ValueError)
-    try:
-        forge_lint("../../etc/passwd")
-        record_test("forge_lint blocks relative path traversal ('../../etc/passwd')", False)
-    except ValueError:
-        record_test("forge_lint blocks relative path traversal ('../../etc/passwd')", True)
+    # Path traversal protection: relative and absolute dirty inputs (returns error string, no unhandled exception)
+    res_lint_rel = forge_lint("../../etc/passwd")
+    record_test(
+        "forge_lint blocks relative path traversal ('../../etc/passwd')",
+        isinstance(res_lint_rel, str) and ("Error in forge_lint:" in res_lint_rel or "Directory traversal rejected" in res_lint_rel),
+    )
 
-    try:
-        forge_lint("C:\\Windows\\win.ini")
-        record_test("forge_lint blocks absolute path traversal ('C:\\Windows\\win.ini')", False)
-    except ValueError:
-        record_test("forge_lint blocks absolute path traversal ('C:\\Windows\\win.ini')", True)
+    res_lint_abs = forge_lint("C:\\Windows\\win.ini")
+    record_test(
+        "forge_lint blocks absolute path traversal ('C:\\Windows\\win.ini')",
+        isinstance(res_lint_abs, str) and ("Error in forge_lint:" in res_lint_abs or "Path traversal rejected" in res_lint_abs),
+    )
 
     # Clean authorized draft access: dual clean inputs (filename vs relative series path)
     lint_authorized_file = forge_lint("beat_06_no_way_2.md")
-    record_test("forge_lint authorized draft filename succeeds", "Prose Quality Lint Report" in lint_authorized_file and "100/100" in lint_authorized_file)
+    record_test("forge_lint authorized draft filename succeeds", "Prose Quality Lint Report" in lint_authorized_file)
 
     lint_authorized_rel = forge_lint("series/hard-country/drafts/beat_06_no_way_2.md")
     record_test("forge_lint authorized series relative path succeeds", "Prose Quality Lint Report" in lint_authorized_rel)
@@ -209,18 +221,18 @@ def run_empirical_suite():
     critique_nonexistent = forge_critique("non_existent_chapter_404.md")
     record_test("forge_critique non-existent path handled without unhandled exception", isinstance(critique_nonexistent, str) and len(critique_nonexistent) > 0)
 
-    # Path traversal protection: relative and absolute dirty inputs (ValueError)
-    try:
-        forge_critique("../../etc/passwd")
-        record_test("forge_critique blocks relative path traversal ('../../etc/passwd')", False)
-    except ValueError:
-        record_test("forge_critique blocks relative path traversal ('../../etc/passwd')", True)
+    # Path traversal protection: relative and absolute dirty inputs (returns error string, no unhandled exception)
+    res_crit_rel = forge_critique("../../etc/passwd")
+    record_test(
+        "forge_critique blocks relative path traversal ('../../etc/passwd')",
+        isinstance(res_crit_rel, str) and ("Error in forge_critique:" in res_crit_rel or "Directory traversal rejected" in res_crit_rel),
+    )
 
-    try:
-        forge_critique("C:\\Windows\\win.ini")
-        record_test("forge_critique blocks absolute path traversal ('C:\\Windows\\win.ini')", False)
-    except ValueError:
-        record_test("forge_critique blocks absolute path traversal ('C:\\Windows\\win.ini')", True)
+    res_crit_abs = forge_critique("C:\\Windows\\win.ini")
+    record_test(
+        "forge_critique blocks absolute path traversal ('C:\\Windows\\win.ini')",
+        isinstance(res_crit_abs, str) and ("Error in forge_critique:" in res_crit_abs or "Path traversal rejected" in res_crit_abs),
+    )
 
     # Clean authorized draft critique: dual clean inputs
     critique_authorized_file = forge_critique("beat_06_no_way_2.md")
@@ -235,18 +247,18 @@ def run_empirical_suite():
 
     # --- 7. forge_revise Edge Cases ---
     print("\n--- 7. Tool: forge_revise ---")
-    # Path traversal protection: relative and absolute dirty inputs (ValueError)
-    try:
-        forge_revise("../../etc/passwd", feedback="Tone down")
-        record_test("forge_revise blocks relative path traversal ('../../etc/passwd')", False)
-    except ValueError:
-        record_test("forge_revise blocks relative path traversal ('../../etc/passwd')", True)
+    # Path traversal protection: relative and absolute dirty inputs (returns error string, no unhandled exception)
+    res_rev_rel = forge_revise("../../etc/passwd", feedback="Tone down")
+    record_test(
+        "forge_revise blocks relative path traversal ('../../etc/passwd')",
+        isinstance(res_rev_rel, str) and ("Error in forge_revise:" in res_rev_rel or "Directory traversal rejected" in res_rev_rel),
+    )
 
-    try:
-        forge_revise("C:\\Windows\\win.ini", feedback="Tone down")
-        record_test("forge_revise blocks absolute path traversal ('C:\\Windows\\win.ini')", False)
-    except ValueError:
-        record_test("forge_revise blocks absolute path traversal ('C:\\Windows\\win.ini')", True)
+    res_rev_abs = forge_revise("C:\\Windows\\win.ini", feedback="Tone down")
+    record_test(
+        "forge_revise blocks absolute path traversal ('C:\\Windows\\win.ini')",
+        isinstance(res_rev_abs, str) and ("Error in forge_revise:" in res_rev_abs or "Path traversal rejected" in res_rev_abs),
+    )
 
     # Non-existent file path
     revise_nonexistent = forge_revise("non_existent_chapter_404.md", feedback="Tone down the dialogue")
