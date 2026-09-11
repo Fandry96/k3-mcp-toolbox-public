@@ -243,6 +243,41 @@ def test_server_k3_forge() -> None:
         and ("Repetition Scan" in rep_res or "Status" in rep_res),
     )
 
+    # 9. Path traversal protection on forge_revise (dirty input: relative traversal)
+    try:
+        k3_forge.forge_revise("../../etc/passwd", feedback="test")
+        test("forge_revise blocks dirty path traversal", False, "Expected ValueError")
+    except ValueError:
+        test("forge_revise blocks dirty path traversal", True)
+
+    # 10. Path traversal protection on forge_lint (dirty input: absolute path outside drafts)
+    try:
+        k3_forge.forge_lint("C:\\Windows\\win.ini")
+        test("forge_lint blocks absolute path traversal", False, "Expected ValueError")
+    except ValueError:
+        test("forge_lint blocks absolute path traversal", True)
+
+    # 11. Clean authorized draft access on forge_lint (clean input)
+    lint_clean_file = k3_forge.forge_lint("beat_06_no_way_2.md")
+    test(
+        "forge_lint cleanly processes authorized draft path",
+        isinstance(lint_clean_file, str) and "Prose Quality Lint Report" in lint_clean_file,
+    )
+
+    # 12. Path traversal protection on forge_critique (dirty input: relative traversal)
+    try:
+        k3_forge.forge_critique("../../etc/passwd")
+        test("forge_critique blocks dirty path traversal", False, "Expected ValueError")
+    except ValueError:
+        test("forge_critique blocks dirty path traversal", True)
+
+    # 13. Clean authorized draft access on forge_critique (clean input)
+    crit_clean_file = k3_forge.forge_critique("beat_06_no_way_2.md")
+    test(
+        "forge_critique cleanly processes authorized draft path",
+        isinstance(crit_clean_file, str) and "Editorial Critique Report" in crit_clean_file,
+    )
+
 
 def main() -> None:
     test_server_mrl_memory()

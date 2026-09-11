@@ -100,6 +100,114 @@ def _resolve_series_dir(series_slug: Optional[str]) -> Path:
     return resolved
 
 
+def _resolve_draft_target(
+    target: str,
+    drafts_dir: Path,
+    must_exist: bool = True,
+    allow_raw_text: bool = False,
+) -> Tuple[Optional[Path], Optional[str]]:
+    """
+    Strictly validate and resolve a target parameter within drafts_dir.resolve().
+
+    Guarantees:
+    1. Directory traversal ('..') is immediately rejected with descriptive ValueError.
+    2. Absolute paths outside drafts_dir are immediately rejected with ValueError.
+    3. Symlinks resolving outside drafts_dir are immediately rejected with ValueError.
+    4. Leading slashes or root-relative paths outside drafts_dir are rejected with ValueError.
+    5. Valid relative paths (e.g. 'series/hard-country/drafts/file.md', 'drafts/file.md', 'file.md', or beat ID)
+       resolve strictly within drafts_dir.
+
+    Returns:
+        (target_path, None) if resolved to an authorized draft file.
+        (None, raw_text) if allow_raw_text is True and target is not a traversal attempt.
+        (None, None) if not found and not a traversal attempt.
+    """
+    clean = target.strip()
+    if not clean:
+        return None, None
+
+    if "\0" in clean:
+        raise ValueError(f"Path traversal rejected: null byte in path '{clean}'")
+
+    # Check for explicit traversal sequences
+    norm_parts = clean.replace("\\", "/").split("/")
+    if any(p == ".." for p in norm_parts):
+        raise ValueError(f"Directory traversal rejected: path '{clean}' contains '..'")
+
+    drafts_resolved = drafts_dir.resolve()
+    target_p = Path(clean)
+
+    # Check absolute paths or root-relative paths (e.g. /etc/passwd or C:\Windows\win.ini)
+    if target_p.is_absolute() or clean.startswith("/") or clean.startswith("\\"):
+        resolved = target_p.resolve()
+        try:
+            resolved.relative_to(drafts_resolved)
+        except ValueError:
+            raise ValueError(
+                f"Path traversal rejected: absolute path '{clean}' resolves outside "
+                f"authorized drafts directory ('{drafts_resolved}')"
+            )
+        if must_exist and not resolved.is_file():
+            return None, None
+        return resolved, None
+
+    # Handle paths prefixed with known parent directories
+    candidate: Optional[Path] = None
+    if clean.startswith("Proto_book/") or clean.startswith("Proto_book\\"):
+        candidate = (PROTO_BOOK_DIR.parent / clean).resolve()
+    elif clean.startswith("series/") or clean.startswith("series\\"):
+        candidate = (PROTO_BOOK_DIR / clean).resolve()
+    elif clean.startswith("drafts/") or clean.startswith("drafts\\"):
+        candidate = (drafts_dir.parent / clean).resolve()
+
+    if candidate is not None:
+        try:
+            candidate.relative_to(drafts_resolved)
+        except ValueError:
+            raise ValueError(
+                f"Path traversal rejected: path '{clean}' resolves outside "
+                f"authorized drafts directory ('{drafts_resolved}')"
+            )
+        if must_exist:
+            if candidate.exists() and candidate.is_file():
+                return candidate, None
+            return None, None
+        return candidate, None
+
+    # Candidate files relative to drafts_dir
+    candidates: List[Path] = [(drafts_dir / clean).resolve()]
+    if not clean.endswith(".md"):
+        candidates.append((drafts_dir / f"{clean}.md").resolve())
+        candidates.append((drafts_dir / f"{clean}_no_way_2.md").resolve())
+
+    for cand in candidates:
+        try:
+            cand.relative_to(drafts_resolved)
+        except ValueError:
+            raise ValueError(
+                f"Path traversal rejected: target '{clean}' resolves outside "
+                f"authorized drafts directory ('{drafts_resolved}')"
+            )
+        if cand.exists() and cand.is_file():
+            return cand, None
+
+    # Glob search for beat IDs within drafts_dir
+    if "/" not in clean and "\\" not in clean and drafts_dir.exists():
+        for matched in drafts_dir.glob(f"*{clean}*.md"):
+            m_res = matched.resolve()
+            try:
+                m_res.relative_to(drafts_resolved)
+                if m_res.is_file():
+                    return m_res, None
+            except ValueError:
+                continue
+
+    if allow_raw_text:
+        return None, clean
+
+    return None, None
+
+
 def _get_beat_engine() -> Optional[BeatEngine]:
     if BeatEngine is not None and PACING_PATH.exists():
         try:
@@ -112,8 +220,8 @@ def _get_beat_engine() -> Optional[BeatEngine]:
 def _get_bible_keeper(series_slug: Optional[str]) -> Optional[BibleKeeper]:
     if BibleKeeper is not None:
         try:
-            slug = (series_slug or DEFAULT_SERIES).strip()
-            return BibleKeeper(slug)
+            series_dir = _resolve_series_dir(series_slug)
+            return BibleKeeper(series_dir.name)
         except Exception as exc:
             _log.warning(f"Error initializing BibleKeeper for {series_slug}: {exc}")
     return None
@@ -515,7 +623,8 @@ def forge_choreograph(beat_id: str, series_slug: Optional[str] = "hard-country")
         series_slug: Optional series directory slug (default: 'hard-country').
     """
     try:
-        slug = (series_slug or DEFAULT_SERIES).strip()
+        series_dir = _resolve_series_dir(series_slug)
+        slug = series_dir.name
         engine = _get_beat_engine()
         if not engine:
             return f"Error: Pacing structure matrix not found at {PACING_PATH}."
@@ -1043,40 +1152,24 @@ def forge_lint(target: str, series_slug: Optional[str] = "hard-country") -> str:
         drafts_dir = series_dir / "drafts"
 
         clean_target = target.strip()
-        content = ""
-        source_label = clean_target
+        try:
+            target_file, raw_text = _resolve_draft_target(
+                clean_target,
+                drafts_dir,
+                must_exist=True,
+                allow_raw_text=True,
+            )
+        except ValueError:
+            raise
 
-        # Check direct path
-        p1 = Path(clean_target)
-        if p1.exists() and p1.is_file():
-            content = p1.read_text(encoding="utf-8")
-            source_label = str(p1)
-        elif (PROTO_BOOK_DIR / clean_target).exists() and (PROTO_BOOK_DIR / clean_target).is_file():
-            target_path = PROTO_BOOK_DIR / clean_target
-            content = target_path.read_text(encoding="utf-8")
-            source_label = str(target_path)
-        elif drafts_dir.exists():
-            # Check draft by beat ID or filename
-            candidates = [
-                drafts_dir / clean_target,
-                drafts_dir / f"{clean_target}.md",
-                drafts_dir / f"{clean_target}_no_way_2.md",
-            ]
-            for cand in candidates:
-                if cand.exists() and cand.is_file():
-                    content = cand.read_text(encoding="utf-8")
-                    source_label = str(cand)
-                    break
-            if not content and clean_target:
-                matched = list(drafts_dir.glob(f"*{clean_target}*.md"))
-                if matched:
-                    content = matched[0].read_text(encoding="utf-8")
-                    source_label = str(matched[0])
-
-        # If not a file on disk, treat target directly as prose text
-        if not content:
-            content = target
-            source_label = f"Raw Text ({len(target.split())} words)"
+        if target_file:
+            content = target_file.read_text(encoding="utf-8")
+            source_label = str(target_file)
+        elif raw_text is not None:
+            content = raw_text
+            source_label = f"Raw Text ({len(raw_text.split())} words)"
+        else:
+            return f"Error: Target '{target}' could not be resolved."
 
         res = check_prose(content)
         score = res.get("score", 100)
@@ -1112,6 +1205,8 @@ def forge_lint(target: str, series_slug: Optional[str] = "hard-country") -> str:
 
         return "\n".join(lines)
 
+    except ValueError:
+        raise
     except Exception as exc:
         return f"Error in forge_lint: {exc}"
 
@@ -1143,21 +1238,15 @@ def forge_revise(
         drafts_dir = series_dir / "drafts"
 
         clean_target = target.strip()
-        target_file: Optional[Path] = None
-        p = Path(clean_target)
-        if p.exists() and p.is_file():
-            target_file = p
-        elif (PROTO_BOOK_DIR / clean_target).exists() and (PROTO_BOOK_DIR / clean_target).is_file():
-            target_file = PROTO_BOOK_DIR / clean_target
-        elif drafts_dir.exists():
-            for cand in [drafts_dir / clean_target, drafts_dir / f"{clean_target}.md", drafts_dir / f"{clean_target}_no_way_2.md"]:
-                if cand.exists() and cand.is_file():
-                    target_file = cand
-                    break
-            if not target_file and clean_target:
-                matched = list(drafts_dir.glob(f"*{clean_target}*.md"))
-                if matched:
-                    target_file = matched[0]
+        try:
+            target_file, _ = _resolve_draft_target(
+                clean_target,
+                drafts_dir,
+                must_exist=True,
+                allow_raw_text=False,
+            )
+        except ValueError:
+            raise
 
         if not target_file:
             return f"Error: Target file for revision not found on disk: '{target}'."
@@ -1242,6 +1331,8 @@ def forge_revise(
 
         return "\n".join(lines)
 
+    except ValueError:
+        raise
     except Exception as exc:
         return f"Error in forge_revise: {exc}"
 
@@ -1264,32 +1355,24 @@ def forge_critique(target: str, series_slug: Optional[str] = "hard-country") -> 
         drafts_dir = series_dir / "drafts"
 
         clean_target = target.strip()
-        content = ""
-        target_label = clean_target
+        try:
+            target_file, raw_text = _resolve_draft_target(
+                clean_target,
+                drafts_dir,
+                must_exist=True,
+                allow_raw_text=True,
+            )
+        except ValueError:
+            raise
 
-        p = Path(clean_target)
-        if p.exists() and p.is_file():
-            content = p.read_text(encoding="utf-8")
-            target_label = str(p)
-        elif (PROTO_BOOK_DIR / clean_target).exists() and (PROTO_BOOK_DIR / clean_target).is_file():
-            target_path = PROTO_BOOK_DIR / clean_target
-            content = target_path.read_text(encoding="utf-8")
-            target_label = str(target_path)
-        elif drafts_dir.exists():
-            for cand in [drafts_dir / clean_target, drafts_dir / f"{clean_target}.md", drafts_dir / f"{clean_target}_no_way_2.md"]:
-                if cand.exists() and cand.is_file():
-                    content = cand.read_text(encoding="utf-8")
-                    target_label = str(cand)
-                    break
-            if not content and clean_target:
-                matched = list(drafts_dir.glob(f"*{clean_target}*.md"))
-                if matched:
-                    content = matched[0].read_text(encoding="utf-8")
-                    target_label = str(matched[0])
-
-        if not content:
-            content = target
-            target_label = f"Raw Text ({len(target.split())} words)"
+        if target_file:
+            content = target_file.read_text(encoding="utf-8")
+            target_label = str(target_file)
+        elif raw_text is not None:
+            content = raw_text
+            target_label = f"Raw Text ({len(raw_text.split())} words)"
+        else:
+            return f"Error: Target '{target}' could not be resolved."
 
         # Run mechanical lint baseline
         lint_score_val = 100
@@ -1360,6 +1443,8 @@ def forge_critique(target: str, series_slug: Optional[str] = "hard-country") -> 
 
         return "\n".join(lines)
 
+    except ValueError:
+        raise
     except Exception as exc:
         return f"Error in forge_critique: {exc}"
 

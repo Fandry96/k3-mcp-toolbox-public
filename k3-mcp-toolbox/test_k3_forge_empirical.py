@@ -124,6 +124,11 @@ def run_empirical_suite():
     record_test("forge_choreograph non-existent beat returns descriptive error", choreo_invalid.startswith("Error: Beat 'beat_999' not found"))
     record_test("forge_choreograph non-existent beat fails soft without exception", isinstance(choreo_invalid, str))
 
+    # Series slug sanitization in _get_bible_keeper
+    from servers.k3_forge import _get_bible_keeper
+    record_test("_get_bible_keeper rejects dirty traversal slug", _get_bible_keeper("../../escaped") is None)
+    record_test("_get_bible_keeper accepts clean authorized series slug", _get_bible_keeper("hard-country") is not None)
+
     # --- 4. forge_lint Edge Cases ---
     print("\n--- 4. Tool: forge_lint ---")
     # Clean text
@@ -144,6 +149,26 @@ def run_empirical_suite():
     # Non-existent file path: treated as raw text fallback
     lint_nonexistent_file = forge_lint("non_existent_chapter_404.md")
     record_test("forge_lint non-existent file falls back to raw text without crashing", "Raw Text" in lint_nonexistent_file and "100/100" in lint_nonexistent_file)
+
+    # Path traversal protection: relative and absolute dirty inputs (ValueError)
+    try:
+        forge_lint("../../etc/passwd")
+        record_test("forge_lint blocks relative path traversal ('../../etc/passwd')", False)
+    except ValueError:
+        record_test("forge_lint blocks relative path traversal ('../../etc/passwd')", True)
+
+    try:
+        forge_lint("C:\\Windows\\win.ini")
+        record_test("forge_lint blocks absolute path traversal ('C:\\Windows\\win.ini')", False)
+    except ValueError:
+        record_test("forge_lint blocks absolute path traversal ('C:\\Windows\\win.ini')", True)
+
+    # Clean authorized draft access: dual clean inputs (filename vs relative series path)
+    lint_authorized_file = forge_lint("beat_06_no_way_2.md")
+    record_test("forge_lint authorized draft filename succeeds", "Prose Quality Lint Report" in lint_authorized_file and "100/100" in lint_authorized_file)
+
+    lint_authorized_rel = forge_lint("series/hard-country/drafts/beat_06_no_way_2.md")
+    record_test("forge_lint authorized series relative path succeeds", "Prose Quality Lint Report" in lint_authorized_rel)
 
     # Empty string: fail-soft error handling
     lint_empty = forge_lint("")
@@ -184,12 +209,45 @@ def run_empirical_suite():
     critique_nonexistent = forge_critique("non_existent_chapter_404.md")
     record_test("forge_critique non-existent path handled without unhandled exception", isinstance(critique_nonexistent, str) and len(critique_nonexistent) > 0)
 
+    # Path traversal protection: relative and absolute dirty inputs (ValueError)
+    try:
+        forge_critique("../../etc/passwd")
+        record_test("forge_critique blocks relative path traversal ('../../etc/passwd')", False)
+    except ValueError:
+        record_test("forge_critique blocks relative path traversal ('../../etc/passwd')", True)
+
+    try:
+        forge_critique("C:\\Windows\\win.ini")
+        record_test("forge_critique blocks absolute path traversal ('C:\\Windows\\win.ini')", False)
+    except ValueError:
+        record_test("forge_critique blocks absolute path traversal ('C:\\Windows\\win.ini')", True)
+
+    # Clean authorized draft critique: dual clean inputs
+    critique_authorized_file = forge_critique("beat_06_no_way_2.md")
+    record_test("forge_critique authorized draft filename succeeds", "Editorial Critique Report" in critique_authorized_file)
+
+    critique_authorized_rel = forge_critique("series/hard-country/drafts/beat_06_no_way_2.md")
+    record_test("forge_critique authorized series relative path succeeds", "Editorial Critique Report" in critique_authorized_rel)
+
     # Empty string: fail-soft error handling
     critique_empty = forge_critique("")
     record_test("forge_critique empty string fails soft without unhandled exception", critique_empty.startswith("Error"))
 
     # --- 7. forge_revise Edge Cases ---
     print("\n--- 7. Tool: forge_revise ---")
+    # Path traversal protection: relative and absolute dirty inputs (ValueError)
+    try:
+        forge_revise("../../etc/passwd", feedback="Tone down")
+        record_test("forge_revise blocks relative path traversal ('../../etc/passwd')", False)
+    except ValueError:
+        record_test("forge_revise blocks relative path traversal ('../../etc/passwd')", True)
+
+    try:
+        forge_revise("C:\\Windows\\win.ini", feedback="Tone down")
+        record_test("forge_revise blocks absolute path traversal ('C:\\Windows\\win.ini')", False)
+    except ValueError:
+        record_test("forge_revise blocks absolute path traversal ('C:\\Windows\\win.ini')", True)
+
     # Non-existent file path
     revise_nonexistent = forge_revise("non_existent_chapter_404.md", feedback="Tone down the dialogue")
     record_test("forge_revise non-existent target returns descriptive error", revise_nonexistent.startswith("Error: Target file for revision not found on disk"))
