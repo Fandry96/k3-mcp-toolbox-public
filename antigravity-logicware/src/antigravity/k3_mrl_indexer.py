@@ -129,7 +129,8 @@ class MatryoshkaIndexer:
             ".git",
             "__pycache__",
         }
-        extensions = {
+        # ⚡ BOLT OPTIMIZATION: Use tuple and endswith to avoid pathlib.Path instantiation overhead in loop
+        extensions = (
             ".txt",
             ".md",
             ".py",
@@ -143,12 +144,12 @@ class MatryoshkaIndexer:
             ".java",
             ".c",
             ".h",
-        }
+        )
 
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
             for file in files:
-                if Path(file).suffix in extensions:
+                if file.endswith(extensions):
                     valid_files.append(Path(root) / file)
         return valid_files
 
