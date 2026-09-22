@@ -130,10 +130,12 @@ class MatryoshkaIndexer:
             ".h",
         }
 
+        ext_tuple = tuple(extensions)  # ⚡ BOLT OPTIMIZATION: Convert set to tuple for fast string matching
+
         for root, dirs, files in os.walk(self.target_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
             for file in files:
-                if Path(file).suffix in extensions:
+                if file.endswith(ext_tuple):  # ⚡ BOLT OPTIMIZATION: native string match vs Path() object overhead
                     valid_files.append(Path(root) / file)
         return valid_files
 
