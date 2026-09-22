@@ -55,11 +55,26 @@ def _safe_unpickle(file_path: Path) -> dict:
 
 
 def _get_api_key() -> str:
-    """Retrieves the Gemini API key from environment variables."""
+    """Retrieves the Gemini API key from environment, .env.local, or Secret Manager."""
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if not key:
-        raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY.")
-    return key
+    if key:
+        return key
+    env_path = r"c:\K3_Firehose\.env.local"
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("GEMINI_API_KEY=") or line.startswith("GOOGLE_API_KEY="):
+                    return line.split("=", 1)[1].strip("'\"")
+    try:
+        from google.cloud import secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        name = "projects/gen-lang-client-0778100894/secrets/GEMINI_API_KEY/versions/latest"
+        resp = client.access_secret_version(request={"name": name})
+        return resp.payload.data.decode("utf-8").strip()
+    except Exception:
+        pass
+    raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY in environment, .env.local, or Secret Manager.")
 
 
 def _embed_single(text: str) -> np.ndarray:

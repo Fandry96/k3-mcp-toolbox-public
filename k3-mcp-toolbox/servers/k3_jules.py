@@ -24,7 +24,7 @@ API_BASE = "https://jules.googleapis.com/v1alpha"
 
 
 def _get_api_key() -> str:
-    """Retrieves Jules API key from environment."""
+    """Retrieves Jules API key from environment, .env.local, or GCP Secret Manager."""
     key = os.environ.get("JULES_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not key:
         # Check .env.local in K3_Firehose root as fallback
@@ -37,6 +37,17 @@ def _get_api_key() -> str:
                         return line.split("=", 1)[1].strip("'\"")
                     if not key and line.startswith("GEMINI_API_KEY="):
                         key = line.split("=", 1)[1].strip("'\"")
+        if key:
+            return key
+        # GCP Secret Manager fallback
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+            name = "projects/gen-lang-client-0778100894/secrets/JULES_API_KEY/versions/latest"
+            resp = client.access_secret_version(request={"name": name})
+            return resp.payload.data.decode("utf-8").strip()
+        except Exception:
+            pass
     return key or ""
 
 
