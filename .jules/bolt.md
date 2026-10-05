@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-02-23 - [Remove Redundant L2 Re-normalization in STAGE 2 Rerank]
+**Learning:** In the `search()` method of MatryoshkaIndexer, STAGE 2 reranking was re-calculating `np.linalg.norm` for both the query vector (`q_vec`) and the matrix subset (`m_full_subset`). Because these vectors are already normalized to an L2 norm of 1 during indexing and initial query embedding, this re-normalization is mathematically redundant and computationally expensive.
+**Action:** Always verify if vectors are already normalized earlier in the pipeline before performing redundant L2 normalization during similarity search, as skipping it significantly reduces dot-product latency.
