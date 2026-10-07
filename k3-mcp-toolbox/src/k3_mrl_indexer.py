@@ -182,7 +182,12 @@ class MatryoshkaIndexer:
         chunks = []
 
         # 1. Custom File Delimiters
-        parts = re.split(r"(^--- FILE: .*? ---$)", raw_text, flags=re.MULTILINE)
+        # ⚡ BOLT OPTIMIZATION: Bypass expensive multi-line regex split if delimiter is not present
+        if "--- FILE:" in raw_text:
+            parts = re.split(r"(^--- FILE: .*? ---$)", raw_text, flags=re.MULTILINE)
+        else:
+            parts = [raw_text]
+
         if len(parts) > 1:
             current_header = "preamble"
             for part in parts:
