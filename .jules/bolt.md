@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-02-23 - [Optimize Whitespace Normalization with Native String Methods]
+**Learning:** Using `re.sub(r"\s+", " ", text).strip()` for whitespace normalization is ~4-5x slower than using native python string methods `" ".join(text.split())`. Since `sanitize_content` is called for every chunk of text during indexing, avoiding regex for whitespace replacement yields significant indexing throughput gains.
+**Action:** Prefer `split()` and `join()` over regex for simple whitespace normalization and stripping. Additionally, wrap regex replacements that search for specific delimiters (like image markdown tags `![`) with native string inclusion checks (e.g., `if "![" in text:`) to bypass the regex engine when the pattern is absent.
