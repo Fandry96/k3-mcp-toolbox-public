@@ -34,6 +34,7 @@ MODEL = "models/gemini-embedding-001"
 _INDEX_CACHE: Optional[Dict[str, Any]] = None
 _MATRIX_CACHE: Optional[np.ndarray] = None
 _KEYS_CACHE: Optional[List[str]] = None
+_CATEGORIES_CACHE: Optional[np.ndarray] = None
 _LAST_LOAD_TIME: float = 0.0
 
 
@@ -79,7 +80,8 @@ def _embed_query(query: str) -> np.ndarray:
     vec = np.array(raw_vec, dtype=np.float32)
     if TARGET_DIMENSION < vec.shape[0]:
         vec = vec[:TARGET_DIMENSION]
-    norm = np.linalg.norm(vec)
+    # ⚡ BOLT OPTIMIZATION: Fast 1D vector norm
+    norm = np.sqrt(np.dot(vec, vec))
     if norm > 0:
         vec = vec / norm
     return vec
@@ -87,10 +89,10 @@ def _embed_query(query: str) -> np.ndarray:
 
 def _ensure_index() -> tuple:
     """Loads and caches the MRL index into memory with precomputed matrix for O(N) top-k."""
-    global _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE, _LAST_LOAD_TIME
+    global _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE, _CATEGORIES_CACHE, _LAST_LOAD_TIME
 
     if _INDEX_CACHE is not None:
-        return _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE
+        return _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE, _CATEGORIES_CACHE
 
     if not DEFAULT_INDEX_PATH.exists():
         raise FileNotFoundError(f"MRL index not found at {DEFAULT_INDEX_PATH}")
@@ -109,14 +111,18 @@ def _ensure_index() -> tuple:
     matrix = np.vstack(vectors)
 
     # Ensure matrix is float32 and L2 normalized
-    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    # ⚡ BOLT OPTIMIZATION: Faster matrix norm calculation
+    norms = np.sqrt(np.einsum('ij,ij->i', matrix, matrix))[:, np.newaxis]
     norms[norms == 0] = 1.0
     _MATRIX_CACHE = (matrix / norms).astype(np.float32)
     _KEYS_CACHE = keys
+
+    # ⚡ BOLT OPTIMIZATION: Precompute categories array for O(1) filtering
+    _CATEGORIES_CACHE = np.array([_classify_key(k) for k in keys])
     _LAST_LOAD_TIME = time.time() - t0
 
     sys.stderr.write(f"[k3-mrl-memory] Loaded {len(keys):,} vectors in {_LAST_LOAD_TIME:.2f}s\n")
-    return _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE
+    return _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE, _CATEGORIES_CACHE
 
 
 def _classify_key(key: str) -> str:
@@ -148,7 +154,7 @@ def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -
         return "Error: Search query cannot be empty."
 
     try:
-        index, matrix, keys = _ensure_index()
+        index, matrix, keys, categories_array = _ensure_index()
     except Exception as e:
         return f"Error loading index: {e}"
 
@@ -165,7 +171,8 @@ def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -
     # Apply filter mask if requested
     if filter_type:
         filter_norm = filter_type.strip().lower()
-        mask = np.array([_classify_key(k) == filter_norm for k in keys], dtype=bool)
+        # ⚡ BOLT OPTIMIZATION: Use precomputed categories instead of O(N) string classification
+        mask = categories_array == filter_norm
         if not np.any(mask):
             return f"No records found matching filter '{filter_type}'."
         scores = np.where(mask, scores, -np.inf)
@@ -217,14 +224,13 @@ def mrl_index_stats() -> str:
     dimension size, and breakdown across corpora categories.
     """
     try:
-        index, matrix, keys = _ensure_index()
+        index, matrix, keys, categories_array = _ensure_index()
     except Exception as e:
         return f"Index unavailable: {e}"
 
-    categories = {}
-    for k in keys:
-        cat = _classify_key(k)
-        categories[cat] = categories.get(cat, 0) + 1
+    # ⚡ BOLT OPTIMIZATION: Use np.unique on precomputed cache instead of loop
+    unique, counts = np.unique(categories_array, return_counts=True)
+    categories = dict(zip(unique, counts))
 
     file_size_mb = DEFAULT_INDEX_PATH.stat().st_size / (1024 * 1024)
     matrix_mb = matrix.nbytes / (1024 * 1024)
