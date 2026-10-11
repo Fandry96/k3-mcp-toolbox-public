@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-02-23 - [Precompute string classifications for large indices]
+**Learning:** Performing per-element string analysis (like categorizing a path prefix) inside frequent operations like vector search filtering or stats generation adds significant overhead (e.g., ~15-20ms for 25,000 keys). Precomputing these string classifications once at load time into a NumPy array cache enables O(1) vectorized comparisons (`mask = categories_array == filter_norm`) or fast statistics (`np.unique`), yielding 6x to 75x speedups.
+**Action:** When a server repeatedly classifies large sets of strings (like index keys), precompute the categories into a NumPy array at index load time instead of computing them on the fly.
