@@ -35,6 +35,7 @@ _INDEX_CACHE: Optional[Dict[str, Any]] = None
 _MATRIX_CACHE: Optional[np.ndarray] = None
 _KEYS_CACHE: Optional[List[str]] = None
 _LAST_LOAD_TIME: float = 0.0
+_LAST_MTIME: float = 0.0
 
 
 def _get_api_key() -> str:
@@ -87,13 +88,14 @@ def _embed_query(query: str) -> np.ndarray:
 
 def _ensure_index() -> tuple:
     """Loads and caches the MRL index into memory with precomputed matrix for O(N) top-k."""
-    global _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE, _LAST_LOAD_TIME
-
-    if _INDEX_CACHE is not None:
-        return _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE
+    global _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE, _LAST_LOAD_TIME, _LAST_MTIME
 
     if not DEFAULT_INDEX_PATH.exists():
         raise FileNotFoundError(f"MRL index not found at {DEFAULT_INDEX_PATH}")
+
+    current_mtime = DEFAULT_INDEX_PATH.stat().st_mtime
+    if _INDEX_CACHE is not None and current_mtime == _LAST_MTIME:
+        return _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE
 
     t0 = time.time()
     with open(DEFAULT_INDEX_PATH, "rb") as f:
@@ -114,6 +116,7 @@ def _ensure_index() -> tuple:
     _MATRIX_CACHE = (matrix / norms).astype(np.float32)
     _KEYS_CACHE = keys
     _LAST_LOAD_TIME = time.time() - t0
+    _LAST_MTIME = current_mtime
 
     sys.stderr.write(f"[k3-mrl-memory] Loaded {len(keys):,} vectors in {_LAST_LOAD_TIME:.2f}s\n")
     return _INDEX_CACHE, _MATRIX_CACHE, _KEYS_CACHE
@@ -122,6 +125,8 @@ def _ensure_index() -> tuple:
 def _classify_key(key: str) -> str:
     """Determines category from key path or ID prefix."""
     k_lower = key.lower()
+    if k_lower.startswith("mcp:"):
+        return "tool"
     if k_lower.startswith("ki:") or "knowledge" in k_lower or "\\ki" in k_lower or "/ki" in k_lower:
         return "knowledge"
     if k_lower.startswith("skill:") or "skill" in k_lower:
@@ -142,7 +147,7 @@ def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -
     Args:
         query: Natural language query (e.g. 'governance lifecycle hooks', 'Delaware M&A earnout')
         top_k: Number of results to return (default: 10, max: 50)
-        filter_type: Optional category filter: 'skill', 'knowledge', 'research', 'brain', 'book'
+        filter_type: Optional category filter: 'tool', 'skill', 'knowledge', 'research', 'brain', 'book'
     """
     if not query or not query.strip():
         return "Error: Search query cannot be empty."
