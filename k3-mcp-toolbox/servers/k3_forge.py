@@ -480,11 +480,9 @@ def _compute_embedding(text: str) -> list[float]:
 
 @mcp.tool()
 def forge_status(series_slug: Optional[str] = "hard-country") -> str:
-    """
-    Returns active series, current beat, phase constraints, and word counts across drafts.
-    
+    """Report active Proto_book series progress, current beat cursor, phase constraints, and per-draft word/lint scores. Use INSTEAD OF manual wc -w or directory globbing scripts when checking manuscript state in Proto_book. Do NOT use for: linting a single chapter in detail (use forge_lint).
     Args:
-        series_slug: Optional slug of the series (defaults to 'hard-country').
+        series_slug: Series slug (default: 'hard-country').
     """
     try:
         slug = (series_slug or DEFAULT_SERIES).strip()
@@ -626,12 +624,10 @@ def forge_status(series_slug: Optional[str] = "hard-country") -> str:
 
 @mcp.tool()
 def forge_choreograph(beat_id: str, series_slug: Optional[str] = "hard-country") -> str:
-    """
-    Generates structured 8-15 step micro-beat physical blocking and emotional shifts using beat metadata from pacing-structure.json.
-    
+    """Generate an 8-15 step micro-beat physical blocking and emotional subtext table from pacing-structure.json. Use INSTEAD OF manual JSON parsing or freehand scene outlining before drafting a Proto_book beat. Do NOT use for: writing full chapter prose (use forge_draft).
     Args:
-        beat_id: The ID of the beat to choreograph (e.g. 'beat_06' or 'beat_06_no_way_2').
-        series_slug: Optional series directory slug (default: 'hard-country').
+        beat_id: Beat ID to choreograph (e.g. 'beat_06').
+        series_slug: Series slug (default: 'hard-country').
     """
     try:
         series_dir = _resolve_series_dir(series_slug)
@@ -768,15 +764,13 @@ def forge_draft(
     choreography: Optional[str] = None,
     series_slug: Optional[str] = "hard-country",
 ) -> str:
-    """
-    Executes the drafting quality gate (Drafter with voice calibration + deny-list constraints -> Linter with check_prose -> Critic with quality scoring). Writes output to series/{slug}/drafts/beat_{id}.md.
-    
+    """Draft a novel scene through the Drafter -> Prose Linter -> Editorial Critic pipeline and save to series/{slug}/drafts/. Use INSTEAD OF raw write_to_file prose generation when drafting Proto_book chapters so voice and deny-lists are enforced. Do NOT use for: editing existing drafts (use forge_revise).
     Args:
-        beat_id: The ID of the beat to draft (e.g. 'beat_06' or 'beat_06_no_way_2').
-        pov: Character POV ('ryder' or 'val', defaults to beat metadata).
-        target_words: Minimum target word count (default: 1000).
-        choreography: Optional pre-generated physical choreography steps.
-        series_slug: Optional series directory slug (default: 'hard-country').
+        beat_id: Beat ID to draft.
+        pov: Character POV.
+        target_words: Target word count.
+        choreography: Optional blocking steps.
+        series_slug: Series slug.
     """
     try:
         slug = (series_slug or DEFAULT_SERIES).strip()
@@ -1143,13 +1137,10 @@ def forge_draft(
 
 @mcp.tool()
 def forge_lint(target: str, series_slug: Optional[str] = "hard-country") -> str:
-    """
-    Runs deterministic prose checks via check_prose() and returns structured violations or CLEAN.
-    
+    """Run deterministic check_prose() rules against a chapter draft or raw text to flag filter words, AI tics, and banned tropes. Use INSTEAD OF manual regex searches or python -m adk.prose_linter shell calls when linting narrative prose. Do NOT use for: 4-axis editorial scoring (use forge_critique) or code linting.
     Args:
-        target: File path (e.g. 'series/hard-country/drafts/beat_06_no_way_2.md'),
-                beat ID (e.g. 'beat_06'), or raw prose text to lint.
-        series_slug: Optional series directory slug (default: 'hard-country').
+        target: Draft path, beat ID, or raw prose text.
+        series_slug: Series slug (default: 'hard-country').
     """
     try:
         if not target or not target.strip():
@@ -1223,13 +1214,11 @@ def forge_revise(
     feedback: str,
     series_slug: Optional[str] = "hard-country",
 ) -> str:
-    """
-    Re-runs generation targeting specific author critique/feedback.
-    
+    """Revise an existing Proto_book chapter draft on disk using author feedback while enforcing Anglo-Saxon diction and prose linter rules. Use INSTEAD OF manual replace_file_content edits when applying editorial feedback to a scene draft. Do NOT use for: drafting a brand-new beat from scratch (use forge_draft).
     Args:
-        target: Path to existing chapter draft file or beat ID to revise.
-        feedback: Author critique, specific instructions, or pacing changes.
-        series_slug: Optional series directory slug (default: 'hard-country').
+        target: Existing draft path or beat ID.
+        feedback: Revision instructions.
+        series_slug: Series slug (default: 'hard-country').
     """
     try:
         if not target or not target.strip():
@@ -1340,12 +1329,10 @@ def forge_revise(
 
 @mcp.tool()
 def forge_critique(target: str, series_slug: Optional[str] = "hard-country") -> str:
-    """
-    Evaluates prose against pacing, voice, tension, and continuity benchmarks.
-    
+    """Evaluate a chapter draft or prose excerpt across 4 editorial axes (Pacing, Tension, Voice, Continuity) on a 1-10 rubric. Use INSTEAD OF ad-hoc subjective review when grading scene readiness in Proto_book. Do NOT use for: line-by-line banned word detection (use forge_lint) or mutating the draft (use forge_revise).
     Args:
-        target: Path to draft file, beat ID, or raw text to evaluate.
-        series_slug: Optional series directory slug (default: 'hard-country').
+        target: Draft file path, beat ID, or raw prose text.
+        series_slug: Series slug (default: 'hard-country').
     """
     try:
         if not target or not target.strip():
@@ -1447,12 +1434,10 @@ def forge_critique(target: str, series_slug: Optional[str] = "hard-country") -> 
 
 @mcp.tool()
 def forge_describe(text: str, channels: Optional[str] = None) -> str:
-    """
-    Decomposes text into sensory palettes across acoustic, tactile, olfactory, visual, and metaphor channels.
-    
+    """Decompose a scene concept or excerpt into concrete Anglo-Saxon sensory palettes (acoustic, tactile, olfactory, visual, metaphor). Use INSTEAD OF generic freehand description brainstorming when grounding setting details in Proto_book. Do NOT use for: full scene drafting (use forge_draft) or prose linting (use forge_lint).
     Args:
-        text: Input prose excerpt, scene concept, or object description.
-        channels: Optional comma-separated channels (defaults to 'acoustic,tactile,olfactory,visual,metaphor').
+        text: Scene concept or excerpt.
+        channels: Optional comma-separated channels.
     """
     try:
         raw_text = text.strip()
@@ -1546,14 +1531,10 @@ def forge_scan_repetitions(
     series_slug: str = "hard-country",
     window: int = 5,
 ) -> str:
-    """Scan draft chapters in a series for cross-chapter repeated phrases and dialogue echoes.
-
+    """Scan draft chapters across a Proto_book series for cross-chapter repeated n-grams, imagery clusters, and dialogue echoes. Use INSTEAD OF manual grep or ad-hoc n-gram scripts when auditing multi-chapter repetition hotspots. Do NOT use for: single-chapter banned word linting (use forge_lint).
     Args:
-        series_slug: Series directory slug (defaults to 'hard-country').
-        window: Maximum chapter comparison window (defaults to 5).
-
-    Returns:
-        Markdown report detailing repetition severities, phrase matches, dialogue echoes, and hotspot rankings.
+        series_slug: Series slug (default: 'hard-country').
+        window: Chapter comparison window (default: 5).
     """
     try:
         slug = (series_slug or DEFAULT_SERIES).strip()

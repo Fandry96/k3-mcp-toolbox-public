@@ -84,10 +84,7 @@ def _find_gguf_models() -> List[Dict[str, Any]]:
 
 @mcp.tool()
 def local_models_list() -> str:
-    """
-    Discovers all local GGUF models stored in the K3 models directory.
-    Categorizes each model as either 'embedding' or 'generative'.
-    """
+    """List all local GGUF model files in the K3 models directory with size and embedding/generative classification. Use INSTEAD OF Get-ChildItem or find/ls shell commands when checking installed offline GGUF models. Do NOT use for: querying remote cloud model catalogs or downloading models (use local_model_download)."""
     models = _find_gguf_models()
     if not models:
         return f"No .gguf models found in {MODELS_DIR}."
@@ -131,10 +128,9 @@ CURATED_MODELS: Dict[str, Dict[str, Any]] = {
 
 @mcp.tool()
 def local_model_download(model_key_or_url: str = "list") -> str:
-    """
-    Downloads a GGUF model into the K3 models directory for offline inference.
-    Pass 'list' to see available curated models, or specify a model key
-    ('bge-small-en', 'qwen2.5-0.5b', 'smollm2-360m') or direct HTTPS .gguf URL.
+    """Download a curated or custom HuggingFace GGUF model into the K3 offline models directory. Use INSTEAD OF manual curl/wget or Invoke-WebRequest downloads when provisioning local GGUF weights. Do NOT use for: listing already-installed local models (use local_models_list) or non-GGUF weights.
+    Args:
+        model_key_or_url: 'list', curated key ('bge-small-en', 'qwen2.5-0.5b', 'smollm2-360m'), or HTTPS .gguf URL.
     """
     cleaned = model_key_or_url.strip()
     if cleaned.lower() == "list" or (cleaned not in CURATED_MODELS and not cleaned.startswith("http")):
@@ -192,9 +188,9 @@ def local_model_download(model_key_or_url: str = "list") -> str:
 
 @mcp.tool()
 def local_server_status(port: int = DEFAULT_PORT) -> str:
-    """
-    Checks if llama-server.exe is currently active and healthy on the target port.
-    Returns PID, target port, active model, and HTTP response.
+    """Check whether the local llama-server.exe instance is online and healthy on the target TCP port. Use INSTEAD OF curl http://127.0.0.1:8081/health or Get-Process llama-server shell checks when verifying local LLM readiness. Do NOT use for: general multi-port conflict scanning (use ops_check_ports).
+    Args:
+        port: TCP port to check (default: 8081).
     """
     global _SERVER_PROC, _ACTIVE_MODEL, _ACTIVE_PORT
     is_live = _check_health(port)
@@ -226,12 +222,11 @@ def local_server_start(
     port: int = DEFAULT_PORT,
     embedding_mode: bool = True
 ) -> str:
-    """
-    Boots llama-server.exe in the background for local inference/embeddings.
+    """Boot the bundled llama-server.exe background daemon with a local GGUF model and poll until healthy. Use INSTEAD OF manual llama-server.exe CLI invocations when starting local embedding or completion inference. Do NOT use for: running cloud Gemini models.
     Args:
-        model_name: Filename of GGUF model (defaults to embeddinggemma-300M-Q8_0.gguf).
-        port: TCP port to host server on (default: 8081).
-        embedding_mode: Enable --embedding flag for vector operations.
+        model_name: GGUF filename (defaults to embeddinggemma-300M-Q8_0.gguf).
+        port: TCP port (default: 8081).
+        embedding_mode: Enable --embedding flag.
     """
     global _SERVER_PROC, _ACTIVE_MODEL, _ACTIVE_PORT
 
@@ -299,9 +294,7 @@ def local_server_start(
 
 @mcp.tool()
 def local_server_stop() -> str:
-    """
-    Stops the active llama-server.exe subprocess cleanly.
-    """
+    """Stop the managed llama-server.exe background process cleanly and release its TCP port. Use INSTEAD OF raw taskkill /IM llama-server.exe or Stop-Process shell commands when shutting down the local model server. Do NOT use for: killing non-llama processes on other ports (use ops_free_port)."""
     global _SERVER_PROC, _ACTIVE_MODEL
     if _SERVER_PROC and _SERVER_PROC.poll() is None:
         pid = _SERVER_PROC.pid
@@ -318,11 +311,9 @@ def local_server_stop() -> str:
 
 @mcp.tool()
 def local_embed(text: str, port: int = DEFAULT_PORT) -> str:
-    """
-    Generates local embeddings using the active llama-server instance (e.g. EmbeddingGemma).
-    Automatically starts the server if it is offline.
+    """Generate offline vector embeddings via the local llama-server GGUF instance (auto-starting if offline). Use INSTEAD OF cloud Gemini embedding API calls or custom curl POSTs to /embedding when offline, zero-cost, or local CPU/GPU embedding is requested. Do NOT use for: querying the 768-dim MRL index (use mrl_search).
     Args:
-        text: Input text string to generate embeddings for.
+        text: Input text to embed.
         port: Server port (default: 8081).
     """
     if not _check_health(port):
@@ -358,12 +349,10 @@ def local_complete(
     max_tokens: int = 256,
     port: int = DEFAULT_PORT
 ) -> str:
-    """
-    Executes local generative text completion.
-    Note: Requires a generative model to be loaded (not embedding-only models).
+    """Generate offline text completions using a local generative GGUF model hosted on llama-server.exe. Use INSTEAD OF cloud LLM API calls or raw curl POSTs to /completion when offline, air-gapped, or local GPU/CPU inference is requested. Do NOT use for: vector embeddings (use local_embed) or frontier multi-file reasoning.
     Args:
-        prompt: Text prompt to generate completion for.
-        max_tokens: Maximum tokens to generate (default: 256).
+        prompt: Text prompt.
+        max_tokens: Max tokens (default: 256).
         port: Server port (default: 8081).
     """
     if not _check_health(port):

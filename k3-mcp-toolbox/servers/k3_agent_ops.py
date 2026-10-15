@@ -38,10 +38,7 @@ def _run_powershell(command: str) -> str:
 
 @mcp.tool()
 def ops_kill_zombies() -> str:
-    """
-    Terminates orphaned and runaway background processes (chromedriver, msedgedriver,
-    stale chrome/edge test instances) while safely preserving active IDE and agent runtime PIDs.
-    """
+    """Reap orphaned chromedriver, msedgedriver, and headless browser test processes while protecting active IDE and agent PIDs. Use INSTEAD OF raw taskkill /F or Stop-Process shell loops when cleaning up hung browser automation. Do NOT use for: killing user browser windows or freeing a specific TCP port (use ops_free_port)."""
     reaped = []
     skipped = []
 
@@ -105,11 +102,9 @@ def ops_kill_zombies() -> str:
 
 @mcp.tool()
 def ops_check_ports(ports: Optional[List[int]] = None) -> str:
-    """
-    Scans specified TCP ports for active listeners and identifies the owning process and PID.
-    Useful for resolving Errno 10048 (port conflict) before starting dev servers.
+    """Scan local TCP ports for active listeners and return owning PIDs, process names, and bind addresses. Use INSTEAD OF netstat -ano | findstr, Get-NetTCPConnection, or lsof shell commands when diagnosing Errno 10048 port conflicts. Do NOT use for: killing the listener (use ops_free_port) or remote network scanning.
     Args:
-        ports: List of port numbers to probe. Default: [3000, 5173, 8080, 8081, 9222, 26646]
+        ports: Port numbers to probe (default: [3000, 5173, 8080, 8081, 9222, 26646]).
     """
     if not ports:
         ports = [3000, 5173, 8080, 8081, 9222, 26646]
@@ -167,11 +162,9 @@ def ops_check_ports(ports: Optional[List[int]] = None) -> str:
 
 @mcp.tool()
 def ops_free_port(port: int) -> str:
-    """
-    Frees an occupied TCP port by terminating the owning process.
-    Refuses to kill the current agent or parent process.
+    """Terminate the process holding a specific listening TCP port while blocking self/parent agent termination. Use INSTEAD OF Get-NetTCPConnection + taskkill /PID or Stop-Process chains when freeing a busy dev server port. Do NOT use for: read-only port inspection (use ops_check_ports) or bulk zombie reaping (use ops_kill_zombies).
     Args:
-        port: The TCP port to free (e.g. 3000, 8080, 5173)
+        port: The TCP port to free (e.g. 3000, 8080, 5173).
     """
     if port < 1 or port > 65535:
         return f"Invalid port number: {port}"
@@ -201,10 +194,7 @@ def ops_free_port(port: int) -> str:
 
 @mcp.tool()
 def ops_system_health() -> str:
-    """
-    Returns real-time Windows system diagnostics: CPU load, RAM usage, C: disk space,
-    and agent process counts (Python, Node, PowerShell).
-    """
+    """Collect real-time Windows CPU load, RAM usage, C: disk free space, and Python/Node/PowerShell process counts. Use INSTEAD OF ad-hoc Get-CimInstance, Get-Process, or systeminfo PowerShell commands when checking host resource pressure. Do NOT use for: inspecting specific TCP ports (use ops_check_ports) or terminating processes."""
     cmd = (
         "$os = Get-CimInstance Win32_OperatingSystem; "
         "$cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; "

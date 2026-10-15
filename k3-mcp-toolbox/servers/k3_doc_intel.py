@@ -174,12 +174,10 @@ def _chunk_text(text: str, chunk_size: int = 2000, overlap: int = 200) -> List[s
 
 @mcp.tool()
 def doc_extract_text(file_path: str, max_chars: int = 50000) -> str:
-    """
-    Extracts structured plain text from PDF, DOCX, Markdown, or text files.
-    Preserves page breaks and table cell structure.
+    """Extract structured plain text, page markers, and table rows from PDF, DOCX, or text files. Use INSTEAD OF pdftotext, pypdf, pymupdf/fitz, docx2txt, or python-docx one-off shell scripts when reading binary documents. Do NOT use for: semantic search across large multi-file corpora (use doc_chunk_and_embed + doc_search).
     Args:
-        file_path: Absolute path to the document file.
-        max_chars: Maximum characters to return (default: 50,000).
+        file_path: Absolute path to document.
+        max_chars: Max chars returned (default: 50000).
     """
     p = Path(file_path).resolve()
     if not p.exists():
@@ -203,13 +201,11 @@ def doc_chunk_and_embed(
     project_dir: Optional[str] = None,
     chunk_size: int = 2000
 ) -> str:
-    """
-    Chunks a document (PDF, DOCX, TXT) and generates Gemini MRL embeddings.
-    Stores chunks and vectors incrementally in the target project's doc_index.pkl.
+    """Chunk a PDF, DOCX, or text document and store 768-dim Gemini MRL embeddings in doc_index.pkl. Use INSTEAD OF ad-hoc Python chunking/embedding scripts when indexing documents for repeated semantic retrieval. Do NOT use for: one-time full-text reading of a single document (use doc_extract_text).
     Args:
-        file_path: Absolute path to the document to ingest.
-        project_dir: Optional project directory (defaults to global doc_index.pkl).
-        chunk_size: Target characters per chunk (default: 2,000).
+        file_path: Absolute path to document.
+        project_dir: Optional project directory.
+        chunk_size: Chars per chunk (default: 2000).
     """
     p = Path(file_path).resolve()
     if not p.exists():
@@ -288,12 +284,11 @@ def doc_search(
     top_k: int = 5,
     project_dir: Optional[str] = None
 ) -> str:
-    """
-    Performs semantic vector search across ingested documents in the project's doc_index.pkl.
+    """Search ingested PDF/DOCX chunks in doc_index.pkl by semantic cosine similarity. Use INSTEAD OF regex grep or manual PDF text scanning when querying concepts across indexed documents. Do NOT use for: unindexed files (run doc_chunk_and_embed first) or workspace memory/skills search (use mrl_search).
     Args:
-        query: Question or search phrase (e.g. 'indemnification cap tipping basket', 'escrow period').
-        top_k: Number of relevant chunks to retrieve (default: 5).
-        project_dir: Optional project directory to search within.
+        query: Semantic search phrase.
+        top_k: Chunks to retrieve (default: 5).
+        project_dir: Optional project directory.
     """
     if not query or not query.strip():
         return "Error: Search query cannot be empty."
@@ -351,9 +346,9 @@ def doc_search(
 
 @mcp.tool()
 def doc_list_ingested(project_dir: Optional[str] = None) -> str:
-    """
-    Lists all documents currently indexed in the target doc_index.pkl,
-    showing chunk counts, file size, and ingestion timestamps.
+    """List all documents indexed in doc_index.pkl with chunk counts, file sizes, and ingestion timestamps. Use INSTEAD OF manual pickle inspection or directory listing scripts when checking which PDFs/DOCXs are already embedded. Do NOT use for: searching document contents (use doc_search).
+    Args:
+        project_dir: Optional project directory (defaults to global doc_index.pkl).
     """
     idx_path = _resolve_index_path(project_dir)
     if not idx_path.exists():

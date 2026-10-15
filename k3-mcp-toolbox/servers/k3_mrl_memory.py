@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 k3-mrl-memory — High-Speed Semantic Vector Search MCP Server
-Exposes semantic search over the K3 25,000+ vector MRL Index (mrl_index.pkl).
-Supports full corpus search, skill-specific search, and index telemetry.
+Exposes semantic search over the K3 ~20,000-vector MRL Index (mrl_index.pkl).
+Supports past-work memory search, skill discovery, and index telemetry.
 """
 
+import datetime
 import os
 import sys
 import pickle
@@ -29,6 +30,7 @@ DEFAULT_INDEX_PATH = Path(
 ).resolve()
 TARGET_DIMENSION = 768
 MODEL = "models/gemini-embedding-001"
+DEFAULT_EXCLUDED_TYPES = {"tool", "skill", "rules"}
 
 # In-memory index cache
 _INDEX_CACHE: Optional[Dict[str, Any]] = None
@@ -123,31 +125,104 @@ def _ensure_index() -> tuple:
 
 
 def _classify_key(key: str) -> str:
-    """Determines category from key path or ID prefix."""
-    k_lower = key.lower()
-    if k_lower.startswith("mcp:"):
+    """Determines category from explicit key prefix first, then stripped file extension / path segments."""
+    base = key.split("::", 1)[0].strip().lower().replace("\\", "/")
+
+    # 1. Explicit prefixes first
+    if base.startswith("mcp:"):
         return "tool"
-    if k_lower.startswith("ki:") or "knowledge" in k_lower or "\\ki" in k_lower or "/ki" in k_lower:
-        return "knowledge"
-    if k_lower.startswith("skill:") or "skill" in k_lower:
+    if base.startswith("skill:") or "/.agent/skills/" in base or "/skills/" in base:
         return "skill"
-    if k_lower.startswith("brain:") or "brain" in k_lower:
+    if base.startswith("brain:"):
         return "brain"
-    if k_lower.startswith("proto-book:") or "proto_book" in k_lower or k_lower.startswith("forge-ref:") or k_lower.startswith("extraction:"):
+    if base.startswith(("deep-research:", "deep-result:", "night3:", "nlm:", "tessa-manda:")):
+        return "research"
+    if (
+        base.startswith("ki:k3-root/")
+        or base.startswith("governance:")
+        or ".agents/rules/" in base
+        or base.startswith("proto-agent:rules/")
+    ):
+        if any(seg in base for seg in ("/memory.md", "/pitfalls.md", "/blueprints/", "/docs/")):
+            return "knowledge"
+        return "rules"
+    if base.startswith("ki:"):
+        return "knowledge"
+    if base.startswith((
+        "proto-agent:",
+        "proto-script:",
+        "proto-book:",
+        "forge-ref:",
+        "extraction:",
+        "vault:",
+        "template:",
+    )):
         return "book"
-    if "research" in k_lower or "night" in k_lower or "deep" in k_lower or k_lower.startswith("nlm:") or k_lower.endswith(".docx") or "florida" in k_lower:
+
+    # 2. Stripped file extension check (after ::main / ::chunk[n] removal)
+    if base.endswith(".docx"):
+        return "research"
+
+    # 3. Path-segment / substring fallbacks for unprefixed keys
+    if "/knowledge/" in base or "/ki/" in base:
+        return "knowledge"
+    if "/brain/" in base:
+        return "brain"
+    if "proto_book" in base:
+        return "book"
+    if "research" in base or "night" in base or "deep" in base or "florida" in base:
         return "research"
     return "general"
 
 
+def _parse_mtime_date(mtime_val: Any) -> Optional[datetime.date]:
+    """Parses an entry's mtime value (ISO date/datetime string, epoch float/int, or date) into a datetime.date."""
+    if mtime_val is None:
+        return None
+    if isinstance(mtime_val, datetime.datetime):
+        return mtime_val.date()
+    if isinstance(mtime_val, datetime.date):
+        return mtime_val
+    if isinstance(mtime_val, (int, float)):
+        try:
+            return datetime.date.fromtimestamp(float(mtime_val))
+        except Exception:
+            return None
+    if isinstance(mtime_val, str):
+        s = mtime_val.strip()
+        if len(s) >= 10:
+            try:
+                return datetime.date.fromisoformat(s[:10])
+            except ValueError:
+                return None
+    return None
+
+
+def _format_mtime(mtime_val: Any) -> Optional[str]:
+    """Formats an entry's mtime value as YYYY-MM-DD if valid."""
+    d = _parse_mtime_date(mtime_val)
+    return d.isoformat() if d is not None else None
+
+
 @mcp.tool()
-def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -> str:
+def mrl_search(
+    query: str,
+    top_k: int = 10,
+    filter_type: Optional[str] = None,
+    max_age_days: Optional[int] = None,
+    include_all: bool = False,
+) -> str:
     """
-    Search the entire K3 semantic memory index (25,000+ chunks) via Matryoshka vector search.
+    Search the K3 semantic memory index (~20K chunks) for past work, decisions, pitfalls, and research.
+    Use INSTEAD OF grep/view_file across brain/ and knowledge/ when the user asks whether something was solved, decided, or researched before.
+    Do NOT use for: current code AST or call graphs (use graphify), live workspace files (use view_file), or skill lookup (use mrl_search_skills).
+    By default (filter_type=None, include_all=False), excludes 'tool', 'skill', and 'rules' so results return actual past work ('brain', 'knowledge', 'research', 'book').
     Args:
-        query: Natural language query (e.g. 'governance lifecycle hooks', 'Delaware M&A earnout')
+        query: Natural language query (e.g. 'MCP port conflict zombie processes', 'Delaware M&A earnout')
         top_k: Number of results to return (default: 10, max: 50)
-        filter_type: Optional category filter: 'tool', 'skill', 'knowledge', 'research', 'brain', 'book'
+        filter_type: Optional category filter: 'brain', 'knowledge', 'research', 'book', 'rules', 'skill', 'tool', 'general', or 'all'
+        max_age_days: Optional maximum age in days based on source file mtime (e.g. 30)
+        include_all: If True (or filter_type='all'), search all categories including 'tool', 'skill', and 'rules'
     """
     if not query or not query.strip():
         return "Error: Search query cannot be empty."
@@ -167,13 +242,32 @@ def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -
     # Cosine similarity via dot product (both q_vec and matrix are normalized)
     scores = np.dot(matrix, q_vec)
 
-    # Apply filter mask if requested
-    if filter_type:
-        filter_norm = filter_type.strip().lower()
+    # Apply category filter mask
+    filter_norm = filter_type.strip().lower() if filter_type else None
+    if filter_norm and filter_norm not in ("all", "*"):
         mask = np.array([_classify_key(k) == filter_norm for k in keys], dtype=bool)
         if not np.any(mask):
             return f"No records found matching filter '{filter_type}'."
-        scores = np.where(mask, scores, -np.inf)
+    elif not include_all and filter_norm not in ("all", "*"):
+        mask = np.array([_classify_key(k) not in DEFAULT_EXCLUDED_TYPES for k in keys], dtype=bool)
+    else:
+        mask = np.ones(len(keys), dtype=bool)
+
+    # Apply optional recency filter (max_age_days)
+    if max_age_days is not None:
+        cutoff = datetime.date.today() - datetime.timedelta(days=max(0, int(max_age_days)))
+        age_mask = np.array(
+            [
+                (_d := _parse_mtime_date(index[k].get("mtime"))) is not None and _d >= cutoff
+                for k in keys
+            ],
+            dtype=bool,
+        )
+        mask = mask & age_mask
+        if not np.any(mask):
+            return f"No results found for query: '{query}' within max_age_days={max_age_days}."
+
+    scores = np.where(mask, scores, -np.inf)
 
     # Efficient top-k partition
     actual_k = min(top_k, len(scores))
@@ -192,8 +286,10 @@ def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -
         item = index[key]
         snippet = item.get("snippet", "").strip().replace("\n", " ")[:250]
         cat = _classify_key(key)
+        mtime_str = _format_mtime(item.get("mtime"))
+        mtime_tag = f" [mtime: {mtime_str}]" if mtime_str else ""
         results.append(
-            f"{rank}. [{cat.upper()}] (Score: {score:.4f}) {key}\n"
+            f"{rank}. [{cat.upper()}]{mtime_tag} (Score: {score:.4f}) {key}\n"
             f"   Snippet: {snippet}..."
         )
 
@@ -203,14 +299,17 @@ def mrl_search(query: str, top_k: int = 10, filter_type: Optional[str] = None) -
     header = f"=== MRL Search Results ({len(results)} matches for: '{query}') ==="
     if filter_type:
         header += f" [Filter: {filter_type}]"
+    if max_age_days is not None:
+        header += f" [MaxAge: {max_age_days}d]"
     return header + "\n\n" + "\n\n".join(results)
 
 
 @mcp.tool()
 def mrl_search_skills(query: str, top_k: int = 5) -> str:
     """
-    Fast skill discovery: search exclusively across active SKILL.md files.
-    Returns matched skills with relevance scores and file paths.
+    Search exclusively across active SKILL.md cards in the ~20K MRL index to discover the right K3 skill for a task.
+    Use INSTEAD OF manually browsing .agent/skills/ when looking up workflow or domain skills.
+    Do NOT use for: past conversation recall (use mrl_search) or current code structure (use graphify).
     """
     return mrl_search(query=query, top_k=top_k, filter_type="skill")
 
@@ -218,8 +317,9 @@ def mrl_search_skills(query: str, top_k: int = 5) -> str:
 @mcp.tool()
 def mrl_index_stats() -> str:
     """
-    Returns telemetry and diagnostics for the MRL index: total vectors, memory footprint,
-    dimension size, and breakdown across corpora categories.
+    Return telemetry and category breakdown for the ~20K-vector MRL index (total vectors, memory footprint, dimensions, and per-category counts).
+    Use INSTEAD OF manually inspecting mrl_index.pkl when checking index health or corpus distribution.
+    Do NOT use for: searching memory content (use mrl_search) or code graph stats (use graphify.graph_stats).
     """
     try:
         index, matrix, keys = _ensure_index()
@@ -253,3 +353,4 @@ def mrl_index_stats() -> str:
 
 if __name__ == "__main__":
     mcp.run()
+

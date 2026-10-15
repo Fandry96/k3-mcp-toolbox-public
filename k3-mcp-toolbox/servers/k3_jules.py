@@ -97,9 +97,10 @@ def _http_request(
 
 @mcp.tool()
 def jules_list_sources(page_size: int = 20, page_token: Optional[str] = None) -> str:
-    """
-    Lists all authorized GitHub repositories connected to the Google Jules profile.
-    Returns repository owner, name, default branch, and visibility.
+    """List authorized GitHub repositories connected to Google Jules with owner, default branch, and visibility. Use INSTEAD OF curl/REST scripts or manual GitHub App checks when discovering valid source_name targets for Jules sessions. Do NOT use for: general GitHub repo search outside Jules (use github-mcp-server).
+    Args:
+        page_size: Max results (default: 20).
+        page_token: Pagination cursor.
     """
     params = {"pageSize": page_size}
     if page_token:
@@ -111,10 +112,9 @@ def jules_list_sources(page_size: int = 20, page_token: Optional[str] = None) ->
 
 @mcp.tool()
 def jules_get_source(source_id: str) -> str:
-    """
-    Retrieves structural metadata and branch trees for an authorized repository.
+    """Retrieve branch metadata and repository structure for a single authorized Google Jules GitHub source. Use INSTEAD OF raw curl calls to jules.googleapis.com when verifying branch names before launching a session. Do NOT use for: reading file contents inside a repository (use github-mcp-server or view_file).
     Args:
-        source_id: Resource path or ID (e.g. 'sources/github/Fandry96/realtor-web' or 'github/Fandry96/realtor-web')
+        source_id: Jules source ID (e.g. 'sources/github/Fandry96/realtor-web').
     """
     clean_id = source_id if source_id.startswith("sources/") else f"sources/{source_id}"
     res = _http_request(clean_id, method="GET")
@@ -130,18 +130,14 @@ def jules_create_session(
     auto_create_pr: bool = True,
     require_plan_approval: bool = False,
 ) -> str:
-    """
-    Provisions an isolated cloud sandbox and initiates an asynchronous Jules coding session.
-    If source_name is omitted, Jules provisions an ephemeral REPOLESS sandbox (Node.js, Python, Rust, Bun).
-    If source_name is provided, Jules clones the repo, plans changes, executes tests, and delivers PR/patches.
-
+    """Launch an asynchronous Google Jules cloud coding sandbox (repo-bound PR or repoless VM). Use INSTEAD OF manual GitHub issue bots or ad-hoc curl POSTs when delegating autonomous coding, testing, and PR creation to Jules. Do NOT use for: local subagent tasks in the active workspace (use invoke_subagent).
     Args:
-        prompt: Task instructions or code prompt for the agent.
-        source_name: Optional repository resource name (e.g. 'sources/github/Fandry96/realtor-web'). Omit for repoless.
-        branch: Target Git branch (default: repo default branch).
-        title: Descriptive title for tracking in Jules dashboard/CLI.
-        auto_create_pr: If True, automatically creates a GitHub Pull Request upon completion.
-        require_plan_approval: If True, pauses in AWAITING_PLAN_APPROVAL until jules_approve_plan is called.
+        prompt: Task instructions.
+        source_name: Repo resource name (omit for repoless).
+        branch: Target branch.
+        title: Session title.
+        auto_create_pr: Auto-open PR on completion.
+        require_plan_approval: Pause for jules_approve_plan.
     """
     payload: Dict[str, Any] = {
         "prompt": prompt,
@@ -163,9 +159,10 @@ def jules_create_session(
 
 @mcp.tool()
 def jules_list_sessions(page_size: int = 20, page_token: Optional[str] = None) -> str:
-    """
-    Returns a paginated index of active and historical Jules compute sessions.
-    Shows session state (QUEUED, PLANNING, IN_PROGRESS, COMPLETED, FAILED), URLs, and PR links.
+    """List active and historical Google Jules sessions with lifecycle states and PR links. Use INSTEAD OF manual browser dashboard checks or curl scripts when enumerating running Jules jobs. Do NOT use for: polling a single known session ID (use jules_get_session) or local background tasks (use manage_task).
+    Args:
+        page_size: Max sessions to return (default: 20).
+        page_token: Pagination token.
     """
     params = {"pageSize": page_size}
     if page_token:
@@ -177,10 +174,9 @@ def jules_list_sessions(page_size: int = 20, page_token: Optional[str] = None) -
 
 @mcp.tool()
 def jules_get_session(session_id: str) -> str:
-    """
-    Polls the runtime state, lifecycle phase, and PR output links for a specific Jules session.
+    """Poll the lifecycle state, phase, and generated PR URL for a specific Google Jules session. Use INSTEAD OF raw curl polling loops against jules.googleapis.com when checking whether a Jules job finished or needs approval. Do NOT use for: streaming step-by-step activity logs (use jules_list_activities).
     Args:
-        session_id: Session identifier (e.g. 'sessions/12345678' or '12345678')
+        session_id: Jules session ID (e.g. 'sessions/12345678' or '12345678').
     """
     clean_id = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
     res = _http_request(clean_id, method="GET")
@@ -189,9 +185,9 @@ def jules_get_session(session_id: str) -> str:
 
 @mcp.tool()
 def jules_approve_plan(session_id: str) -> str:
-    """
-    Approves an implementation plan when requirePlanApproval was enabled,
-    transitioning the session state from AWAITING_PLAN_APPROVAL to IN_PROGRESS.
+    """Approve a pending implementation plan for a Google Jules session in AWAITING_PLAN_APPROVAL state. Use INSTEAD OF manual web UI clicks or raw REST POSTs when advancing a gated Jules session to execution. Do NOT use for: sending text revisions or steering feedback (use jules_send_message).
+    Args:
+        session_id: Jules session ID awaiting plan approval.
     """
     clean_id = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
     endpoint = f"{clean_id}:approvePlan"
@@ -201,11 +197,10 @@ def jules_approve_plan(session_id: str) -> str:
 
 @mcp.tool()
 def jules_send_message(session_id: str, prompt: str) -> str:
-    """
-    Injects steering guidance, corrections, or prompt adjustments into an active Jules session.
+    """Send steering instructions or follow-up corrections into an active Google Jules session. Use INSTEAD OF GitHub PR comment triggers or manual web UI chat when redirecting an in-flight Jules sandbox. Do NOT use for: messaging local Antigravity subagents (use send_message).
     Args:
-        session_id: Session identifier.
-        prompt: Message or steering instructions to send to the running agent.
+        session_id: Jules session ID.
+        prompt: Steering instructions for the running Jules agent.
     """
     clean_id = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
     endpoint = f"{clean_id}:sendMessage"
@@ -220,10 +215,12 @@ def jules_list_activities(
     page_size: int = 50,
     page_token: Optional[str] = None,
 ) -> str:
-    """
-    Queries the event-sourced activity log and artifact payloads of a Jules session.
-    Use create_time_cursor (RFC 3339 timestamp) for delta stream polling to retrieve
-    only events emitted after the specified timestamp.
+    """Query the event-sourced activity log and artifacts of a Google Jules session with optional RFC 3339 cursor filtering. Use INSTEAD OF raw curl pagination when inspecting sandbox execution steps or errors. Do NOT use for: extracting ready-to-apply git unified diffs (use jules_get_patch).
+    Args:
+        session_id: Jules session ID.
+        create_time_cursor: RFC 3339 timestamp filter.
+        page_size: Max events (default: 50).
+        page_token: Pagination cursor.
     """
     clean_id = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
     endpoint = f"{clean_id}/activities"
@@ -239,10 +236,9 @@ def jules_list_activities(
 
 @mcp.tool()
 def jules_get_patch(session_id: str) -> str:
-    """
-    Extracts the structured ChangeSet patch artifact from a completed Jules session.
-    Returns the unified diff (unidiffPatch), baseCommitId, and suggestedCommitMessage
-    allowing programmatic local patch application via `git apply` without creating Git branches.
+    """Extract the unified diff (unidiffPatch), baseCommitId, and commit message from a completed Google Jules session. Use INSTEAD OF manually parsing activity JSON blobs when applying repoless or unmerged Jules changes locally via git apply. Do NOT use for: checking high-level session status (use jules_get_session).
+    Args:
+        session_id: Jules session ID.
     """
     clean_id = session_id if session_id.startswith("sessions/") else f"sessions/{session_id}"
     endpoint = f"{clean_id}/activities"

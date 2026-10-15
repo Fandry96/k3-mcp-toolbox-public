@@ -62,9 +62,9 @@ def _resolve_repo(repo_path: Optional[str] = None) -> Path:
 
 @mcp.tool()
 def worktree_list(repo_path: Optional[str] = None) -> str:
-    """
-    Lists all active Git worktrees for the repository, showing their directory path,
-    HEAD commit hash, and checked-out branch.
+    """List all active Git worktrees for a repository with directory paths, HEAD hashes, and checked-out branches. Use INSTEAD OF raw git worktree list shell commands when inspecting isolated subagent workspaces. Do NOT use for: listing remote branches or commit logs.
+    Args:
+        repo_path: Root repo directory (default: C:\\K3_Firehose).
     """
     try:
         repo = _resolve_repo(repo_path)
@@ -117,13 +117,11 @@ def worktree_create(
     base_commit: str = "HEAD",
     repo_path: Optional[str] = None
 ) -> str:
-    """
-    Provisions a new isolated Git worktree under ~/.gemini/antigravity/worktrees/{branch_name}.
-    Guarantees isolation from the main workspace to prevent Windows file-lock conflicts.
+    """Provision an isolated Git worktree under ~/.gemini/antigravity/worktrees/{branch_name} with path-traversal protection. Use INSTEAD OF raw git worktree add shell commands when creating isolated workspaces for parallel subagents. Do NOT use for: switching branches in the main working tree.
     Args:
-        branch_name: New git branch name for the worktree.
-        base_commit: Starting branch or commit (default: HEAD).
-        repo_path: Root repo directory (default: C:\\K3_Firehose).
+        branch_name: New or existing git branch name.
+        base_commit: Starting branch/commit (default: HEAD).
+        repo_path: Root repo directory.
     """
     try:
         repo = _resolve_repo(repo_path)
@@ -170,11 +168,11 @@ def worktree_diff(
     target_branch: str = "main",
     repo_path: Optional[str] = None
 ) -> str:
-    """
-    Computes git diff statistics and file change summaries between worktree branch and target.
+    """Compute git diff --stat and changed file summaries between a worktree feature branch and a target branch. Use INSTEAD OF raw git difftarget...branch shell commands when reviewing isolated worktree changes before merge. Do NOT use for: unstaged working-tree edits inside a single directory.
     Args:
-        branch_name: Feature branch in the worktree.
-        target_branch: Comparison branch (default: main).
+        branch_name: Worktree feature branch.
+        target_branch: Base branch (default: main).
+        repo_path: Root repo directory.
     """
     try:
         repo = _resolve_repo(repo_path)
@@ -212,12 +210,12 @@ def worktree_cleanup(
     delete_branch: bool = True,
     repo_path: Optional[str] = None
 ) -> str:
-    """
-    Removes a Git worktree and optionally deletes the associated feature branch.
+    """Remove an isolated Git worktree, prune stale git registry entries, and optionally delete its feature branch. Use INSTEAD OF raw git worktree remove, git worktree prune, or rm -rf shell commands when tearing down a worktree. Do NOT use for: merging changes before teardown (use worktree_merge_and_cleanup).
     Args:
         branch_name: Branch name to tear down.
-        force: Force removal even if uncommitted changes exist.
-        delete_branch: Also delete the git branch (default: True).
+        force: Force removal.
+        delete_branch: Delete git branch (default: True).
+        repo_path: Root repo directory.
     """
     try:
         repo = _resolve_repo(repo_path)
@@ -265,13 +263,12 @@ def worktree_merge_and_cleanup(
     verify_command: Optional[str] = None,
     repo_path: Optional[str] = None
 ) -> str:
-    """
-    Verifies changes inside the worktree, merges them into the target branch, and cleans up.
-    If verify_command fails, the merge is completely aborted.
+    """Run an optional test command in a worktree, merge the feature branch (--no-ff) into target_branch, and clean up. Use INSTEAD OF manual git checkout + git merge + git worktree remove chains when landing verified subagent work. Do NOT use for: discarding unmerged worktrees (use worktree_cleanup).
     Args:
         branch_name: Feature branch to merge.
         target_branch: Destination branch (default: main).
-        verify_command: Optional shell command to run in worktree before merging (e.g. 'python -m pytest').
+        verify_command: Optional test command before merge.
+        repo_path: Root repo directory.
     """
     try:
         repo = _resolve_repo(repo_path)
