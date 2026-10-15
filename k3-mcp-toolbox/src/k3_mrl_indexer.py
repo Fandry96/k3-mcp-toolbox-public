@@ -208,29 +208,27 @@ class MatryoshkaIndexer:
             return [(text, f"::{base_id}")]
 
         chunks = []
-        lines = text.split("\n")
-        current_chunk = []
-        current_len = 0
+        start_idx = 0
+        text_len = len(text)
         chunk_idx = 0
 
-        for line in lines:
-            line_len = len(line) + 1  # +1 for newline
-            if current_len + line_len > limit:
-                # Commit current chunk
-                if current_chunk:
-                    joined = "\n".join(current_chunk)
-                    chunks.append((joined, f"::{base_id}[{chunk_idx}]"))
-                    chunk_idx += 1
-                    current_chunk = []
-                    current_len = 0
+        # ⚡ BOLT OPTIMIZATION: str.rfind() avoids large list allocation from .split("\n")
+        while start_idx < text_len:
+            if text_len - start_idx <= limit:
+                chunks.append((text[start_idx:], f"::{base_id}[{chunk_idx}]"))
+                break
 
-            current_chunk.append(line)
-            current_len += line_len
+            end_idx = start_idx + limit
+            split_idx = text.rfind("\n", start_idx, end_idx)
 
-        # Flush remainder
-        if current_chunk:
-            joined = "\n".join(current_chunk)
-            chunks.append((joined, f"::{base_id}[{chunk_idx}]"))
+            if split_idx == -1:
+                # Fallback: no newline found within limit, force split
+                chunks.append((text[start_idx:end_idx], f"::{base_id}[{chunk_idx}]"))
+                start_idx = end_idx
+            else:
+                chunks.append((text[start_idx:split_idx], f"::{base_id}[{chunk_idx}]"))
+                start_idx = split_idx + 1
+            chunk_idx += 1
 
         return chunks
 
