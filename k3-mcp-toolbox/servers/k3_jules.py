@@ -130,13 +130,13 @@ def jules_create_session(
     auto_create_pr: bool = True,
     require_plan_approval: bool = False,
 ) -> str:
-    """Launch an asynchronous Google Jules cloud coding sandbox (repo-bound PR or repoless VM). Use INSTEAD OF manual GitHub issue bots or ad-hoc curl POSTs when delegating autonomous coding, testing, and PR creation to Jules. Do NOT use for: local subagent tasks in the active workspace (use invoke_subagent).
+    """Launch a Google Jules cloud coding sandbox (repo PR or repoless VM). Use INSTEAD OF issue bots or curl POSTs to delegate autonomous coding and PRs to Jules. Do NOT use for: local workspace tasks (use invoke_subagent).
     Args:
         prompt: Task instructions.
-        source_name: Repo resource name (omit for repoless).
+        source_name: Repo (omit = repoless).
         branch: Target branch.
         title: Session title.
-        auto_create_pr: Auto-open PR on completion.
+        auto_create_pr: Open PR when done.
         require_plan_approval: Pause for jules_approve_plan.
     """
     payload: Dict[str, Any] = {
@@ -215,7 +215,7 @@ def jules_list_activities(
     page_size: int = 50,
     page_token: Optional[str] = None,
 ) -> str:
-    """Query the event-sourced activity log and artifacts of a Google Jules session with optional RFC 3339 cursor filtering. Use INSTEAD OF raw curl pagination when inspecting sandbox execution steps or errors. Do NOT use for: extracting ready-to-apply git unified diffs (use jules_get_patch).
+    """Query the event-sourced activity log and artifacts of a Google Jules session, optionally filtered by an RFC 3339 cursor. Use INSTEAD OF raw curl pagination when inspecting sandbox steps or errors. Do NOT use for: ready-to-apply git diffs (use jules_get_patch).
     Args:
         session_id: Jules session ID.
         create_time_cursor: RFC 3339 timestamp filter.

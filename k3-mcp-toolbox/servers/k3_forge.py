@@ -764,12 +764,12 @@ def forge_draft(
     choreography: Optional[str] = None,
     series_slug: Optional[str] = "hard-country",
 ) -> str:
-    """Draft a novel scene through the Drafter -> Prose Linter -> Editorial Critic pipeline and save to series/{slug}/drafts/. Use INSTEAD OF raw write_to_file prose generation when drafting Proto_book chapters so voice and deny-lists are enforced. Do NOT use for: editing existing drafts (use forge_revise).
+    """Draft a novel scene through the Drafter -> Prose Linter -> Editorial Critic pipeline and save to series/{slug}/drafts/. Use INSTEAD OF write_to_file prose when drafting Proto_book chapters so voice and deny-lists are enforced. Do NOT use for: editing drafts (use forge_revise).
     Args:
         beat_id: Beat ID to draft.
         pov: Character POV.
         target_words: Target word count.
-        choreography: Optional blocking steps.
+        choreography: Blocking steps.
         series_slug: Series slug.
     """
     try:

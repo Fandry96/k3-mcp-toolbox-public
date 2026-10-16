@@ -213,16 +213,13 @@ def mrl_search(
     include_all: bool = False,
 ) -> str:
     """
-    Search the K3 semantic memory index (~20K chunks) for past work, decisions, pitfalls, and research.
-    Use INSTEAD OF grep/view_file across brain/ and knowledge/ when the user asks whether something was solved, decided, or researched before.
-    Do NOT use for: current code AST or call graphs (use graphify), live workspace files (use view_file), or skill lookup (use mrl_search_skills).
-    By default (filter_type=None, include_all=False), excludes 'tool', 'skill', and 'rules' so results return actual past work ('brain', 'knowledge', 'research', 'book').
+    Search K3 semantic memory for past work, decisions, pitfalls, and research. Use INSTEAD OF grep over brain/ and knowledge/. Do NOT use for: call graphs (use graphify) or skills (use mrl_search_skills).
     Args:
-        query: Natural language query (e.g. 'MCP port conflict zombie processes', 'Delaware M&A earnout')
-        top_k: Number of results to return (default: 10, max: 50)
-        filter_type: Optional category filter: 'brain', 'knowledge', 'research', 'book', 'rules', 'skill', 'tool', 'general', or 'all'
-        max_age_days: Optional maximum age in days based on source file mtime (e.g. 30)
-        include_all: If True (or filter_type='all'), search all categories including 'tool', 'skill', and 'rules'
+        query: Search text.
+        top_k: Results (default 10, max 50).
+        filter_type: Category, e.g. brain, knowledge, research, or all.
+        max_age_days: Max source age in days.
+        include_all: Also search tool/skill/rules.
     """
     if not query or not query.strip():
         return "Error: Search query cannot be empty."

@@ -210,7 +210,7 @@ def worktree_cleanup(
     delete_branch: bool = True,
     repo_path: Optional[str] = None
 ) -> str:
-    """Remove an isolated Git worktree, prune stale git registry entries, and optionally delete its feature branch. Use INSTEAD OF raw git worktree remove, git worktree prune, or rm -rf shell commands when tearing down a worktree. Do NOT use for: merging changes before teardown (use worktree_merge_and_cleanup).
+    """Remove an isolated Git worktree, prune stale registry entries, and optionally delete its branch. Use INSTEAD OF raw git worktree remove/prune or rm -rf when tearing down a worktree. Do NOT use for: merging before teardown (use worktree_merge_and_cleanup).
     Args:
         branch_name: Branch name to tear down.
         force: Force removal.
@@ -263,11 +263,11 @@ def worktree_merge_and_cleanup(
     verify_command: Optional[str] = None,
     repo_path: Optional[str] = None
 ) -> str:
-    """Run an optional test command in a worktree, merge the feature branch (--no-ff) into target_branch, and clean up. Use INSTEAD OF manual git checkout + git merge + git worktree remove chains when landing verified subagent work. Do NOT use for: discarding unmerged worktrees (use worktree_cleanup).
+    """Run an optional test command in a worktree, merge the branch (--no-ff) into target_branch, and clean up. Use INSTEAD OF manual checkout + merge + worktree remove chains when landing subagent work. Do NOT use for: discarding unmerged worktrees (use worktree_cleanup).
     Args:
         branch_name: Feature branch to merge.
-        target_branch: Destination branch (default: main).
-        verify_command: Optional test command before merge.
+        target_branch: Destination (default: main).
+        verify_command: Pre-merge test command.
         repo_path: Root repo directory.
     """
     try:
