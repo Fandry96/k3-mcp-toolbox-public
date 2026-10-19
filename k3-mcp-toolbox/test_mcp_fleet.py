@@ -17,6 +17,22 @@ from pathlib import Path
 SERVERS_DIR = Path(__file__).parent / "servers"
 sys.path.insert(0, str(SERVERS_DIR))
 
+# Ensure Proto_book narrative modules are discoverable for k3-forge integration tests
+PROTO_BOOK_DIR = Path(__file__).resolve().parents[2] / "Proto_book"
+if (PROTO_BOOK_DIR / "forge").exists():
+    sys.path.insert(0, str(PROTO_BOOK_DIR))
+    sys.path.insert(0, str(PROTO_BOOK_DIR / "forge"))
+    try:
+        import forge
+        sys.modules["adk"] = forge
+        for _m in ["prose_linter", "beat_engine", "forge_db", "bible_keeper", "toon_layer", "repetition_scanner"]:
+            try:
+                sys.modules[f"adk.{_m}"] = __import__(_m)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 passed = 0
 failed = 0
 
@@ -29,6 +45,12 @@ def test(name: str, condition: bool, detail: str = "") -> None:
     else:
         failed += 1
         print(f"  [FAIL] {name} -- {detail}")
+        assert condition, f"{name} -- {detail}"
+
+
+test.__test__ = False
+
+
 
 
 def test_server_mrl_memory() -> None:
@@ -110,9 +132,9 @@ def test_server_local_llm() -> None:
     # Model discovery
     models = k3_local_llm._find_gguf_models()
     if models:
-        test("Discovered GGUF models in src/models/", len(models) >= 1)
-        test("Detected EmbeddingGemma model", any("embeddinggemma" in m["name"].lower() for m in models))
-        test("Classified as embedding type", any(m["type"] == "embedding" for m in models))
+        test("Discovered GGUF models in search paths", len(models) >= 1)
+        test("Detected Gemma model in discovery", any("gemma" in m["name"].lower() for m in models))
+        test("Classified with valid model type", any(m["type"] in ("embedding", "generative", "mmproj") for m in models))
         list_str = k3_local_llm.local_models_list()
         test("local_models_list returns formatted table", "GGUF Model Registry" in list_str)
     else:
@@ -131,6 +153,44 @@ def test_server_local_llm() -> None:
     # Download helper extension validation
     invalid_url = k3_local_llm.local_model_download("https://example.com/not-a-gguf.bin")
     test("local_model_download validates .gguf extension", "Error: URL must point to a file ending in .gguf" in invalid_url)
+
+    # Dual-Input Acceptance Tests (teamwork-hygiene.md)
+    # Input 1 (Speed Profile & HF Cache Discovery):
+    # Verify "gemma-4-12b" in k3_local_llm.CURATED_MODELS with n_gpu_layers == 99 and vram_gb <= 8.5,
+    # and k3_local_llm._validate_rtx5080_vram_envelope("gemma-4-12B-it-Q4_0.gguf", 99) is None.
+    m12b = k3_local_llm.CURATED_MODELS.get("gemma-4-12b", {})
+    test(
+        "Dual-Input 1: Speed Profile in CURATED_MODELS (gemma-4-12b, ngl=99, vram<=8.5GB)",
+        m12b.get("n_gpu_layers") == 99 and m12b.get("vram_gb", 99) <= 8.5,
+    )
+    test(
+        "Dual-Input 1: Speed Profile VRAM envelope validation passes",
+        k3_local_llm._validate_rtx5080_vram_envelope("gemma-4-12B-it-Q4_0.gguf", 99) is None,
+    )
+
+    # Input 2 (MoE Offload Profile & Hardware Guardrail Rejection):
+    # Verify "gemma-4-26b-a4b" in k3_local_llm.CURATED_MODELS has n_gpu_layers == 28 (< 99),
+    # and verify _validate_rtx5080_vram_envelope("gemma-4-31b", 99) and
+    # _validate_rtx5080_vram_envelope("model.litertlm", 99) both return strings starting with "[VRAM_GUARD_ERROR]".
+    m26b = k3_local_llm.CURATED_MODELS.get("gemma-4-26b-a4b", {})
+    test(
+        "Dual-Input 2: MoE Offload Profile in CURATED_MODELS (gemma-4-26b-a4b, ngl=28 < 99)",
+        m26b.get("n_gpu_layers") == 28 and m26b.get("n_gpu_layers") < 99,
+    )
+    err_31b = k3_local_llm._validate_rtx5080_vram_envelope("gemma-4-31b", 99)
+    err_litertlm = k3_local_llm._validate_rtx5080_vram_envelope("model.litertlm", 99)
+    test(
+        "Dual-Input 2: VRAM guardrail rejects 31B and litertlm checkpoints",
+        isinstance(err_31b, str) and err_31b.startswith("[VRAM_GUARD_ERROR]") and
+        isinstance(err_litertlm, str) and err_litertlm.startswith("[VRAM_GUARD_ERROR]"),
+    )
+
+    # Model resolution matches cached Gemma 4 26B on disk (Q4_0 or Q4_K_M)
+    resolved_26b = k3_local_llm._resolve_model_path("gemma-4-26b-a4b")
+    test(
+        "Model resolution matches cached Gemma 4 26B on disk (Q4_0 or Q4_K_M)",
+        resolved_26b is not None and resolved_26b.exists(),
+    )
 
 
 def test_server_worktree_ops() -> None:

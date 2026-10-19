@@ -1,4 +1,4 @@
-mcp[cli]
+mcp[cli]>=1.0,<2.0
 python-dotenv
 numpy
 google-genai
