@@ -1,3 +1,7 @@
 ## 2025-02-23 - [Optimize NumPy Top-K Selection with argpartition]
 **Learning:** `np.argsort` has O(N log N) complexity, causing performance bottlenecks during top-K candidate selection in large vector search indices (e.g., K3 MRL Indexer). For top-K selection without a full sort, `np.argpartition` provides O(N) complexity. In benchmarks, switching from `argsort` to `argpartition` for K=75 out of 100,000 vectors reduced the execution time from ~4.0ms down to ~0.36ms (a 10x+ improvement).
 **Action:** When extracting top-K candidates from large NumPy arrays (e.g., scoring matrices, similarity calculations), always prioritize `np.argpartition` followed by sorting just the selected partition, rather than using `np.argsort` on the entire array.
+
+## 2025-02-23 - [Optimize String Chunking in text_splitter with str.rfind]
+**Learning:** In Python, breaking a large string into chunks by splitting the entire string on a delimiter (e.g., `text.split('\n')`) creates large list allocations and memory overhead. For better performance on large documents, using native methods like `str.rfind()` to scan for segment boundaries and slicing the string directly is significantly faster.
+**Action:** When breaking large text into chunks with a size limit, avoid `split('\n')`. Use `text.rfind('\n', start, window_end)` to find the nearest newline before the limit and slice the text directly to avoid memory overhead and intermediate list creation.
