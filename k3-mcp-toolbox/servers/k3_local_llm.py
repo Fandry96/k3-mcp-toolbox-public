@@ -227,6 +227,7 @@ CURATED_MODELS: Dict[str, Dict[str, Any]] = {
     "gemma-4-12b": {
         "name": "gemma-4-12B-it-Q4_0.gguf",
         "filename": "gemma-4-12B-it-Q4_0.gguf",
+        "drafter_filename": "mtp-gemma-4-12B-it-Q4_0.gguf",
         "fallback_filenames": ["gemma-4-12b-it-Q4_K_M.gguf", "gemma-4-12B-it-Q4_K_M.gguf"],
         "url": "https://huggingface.co/ggml-org/gemma-4-12B-it-GGUF/resolve/main/gemma-4-12B-it-Q4_0.gguf",
         "size_mb": 6885.2,
@@ -240,6 +241,7 @@ CURATED_MODELS: Dict[str, Dict[str, Any]] = {
     "gemma-4-26b-a4b": {
         "name": "gemma-4-26B-A4B-it-Q4_0.gguf",
         "filename": "gemma-4-26B-A4B-it-Q4_0.gguf",
+        "drafter_filename": "dflash-gemma-4-26B-A4B-it-Q8_0.gguf",
         "fallback_filenames": ["gemma-4-26B-A4B-it-Q4_K_M.gguf", "gemma-4-26b-a4b-it-q4_k_m.gguf"],
         "url": "https://huggingface.co/ggml-org/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-Q4_0.gguf",
         "size_mb": 13941.0,
@@ -474,7 +476,7 @@ def local_server_start(
         "-t", "4",
     ]
     if flash_attn:
-        cmd.append("-fa")
+        cmd.extend(["-fa", "on"])
     if embedding_mode:
         cmd.append("--embedding")
 
@@ -488,8 +490,8 @@ def local_server_start(
         _ACTIVE_MODEL = target_model_path.name
         _ACTIVE_PORT = port
 
-        # Poll health for up to 8 seconds
-        for _ in range(16):
+        # Poll health for up to 20 seconds (allows 6.8-13.9 GB VRAM upload)
+        for _ in range(40):
             time.sleep(0.5)
             if _check_health(port):
                 backend = _detect_llama_backend()

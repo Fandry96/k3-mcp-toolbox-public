@@ -14,3 +14,8 @@ __pycache__/
 *.gguf
 *.bin
 *.bak
+*.zip
+k3-mcp-toolbox/src/llama_cpp_server/ggml-cuda.dll
+k3-mcp-toolbox/src/llama_cpp_server/ggml-vulkan.dll
+k3-mcp-toolbox/src/llama_cpp_server/cublas*.dll
+k3-mcp-toolbox/src/llama_cpp_server/cudart*.dll
