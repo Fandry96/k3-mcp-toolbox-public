@@ -36,7 +36,7 @@ if str(PROTO_BOOK_DIR) not in sys.path:
 # Optional .env loading for API credentials
 try:
     from dotenv import load_dotenv
-    adk_env = PROTO_BOOK_DIR / "adk" / ".env"
+    adk_env = PROTO_BOOK_DIR / "forge" / ".env"
     if adk_env.exists():
         load_dotenv(adk_env)
 except Exception:
@@ -46,18 +46,18 @@ _log = logging.getLogger("k3_forge")
 
 # ── Isolate adk.agent from triggering heavy/broken MCP workflow graph on import ──
 import types
-if "adk.agent" not in sys.modules:
-    _agent_stub = types.ModuleType("adk.agent")
+if "forge.agent" not in sys.modules:
+    _agent_stub = types.ModuleType("forge.agent")
     _agent_stub.root_agent = None
-    sys.modules["adk.agent"] = _agent_stub
+    sys.modules["forge.agent"] = _agent_stub
 
 # ── Verified Proto_book ADK Imports ───────────────────────────────────────────
 try:
-    from adk.prose_linter import check_prose, lint_content, lint_score
-    from adk.beat_engine import BeatEngine
-    from adk.forge_db import ForgeDB
-    from adk.bible_keeper import BibleKeeper
-    from adk.toon_layer import json_to_toon, load_context_as_toon
+    from forge.prose_linter import check_prose, lint_content, lint_score
+    from forge.beat_engine import BeatEngine
+    from forge.forge_db import ForgeDB
+    from forge.bible_keeper import BibleKeeper
+    from forge.toon_layer import json_to_toon, load_context_as_toon
 except ImportError as err:
     _log.warning(f"Failed importing one or more ADK narrative modules: {err}")
     check_prose = None
@@ -68,7 +68,7 @@ except ImportError as err:
     load_context_as_toon = None
 
 try:
-    from adk.repetition_scanner import scan_repetitions, format_repetition_markdown
+    from forge.repetition_scanner import scan_repetitions, format_repetition_markdown
 except ImportError as err:
     _log.warning(f"Failed importing repetition_scanner: {err}")
     scan_repetitions = None
@@ -458,7 +458,7 @@ def _compute_embedding(text: str) -> list[float]:
             from google import genai
             client = genai.Client(api_key=api_key)
             result = client.models.embed_content(
-                model="text-embedding-004",
+                model="gemini-embedding-001",
                 contents=text,
                 config={"output_dimensionality": 768},
             )
@@ -1580,7 +1580,7 @@ def forge_scan_repetitions(
             return f"Error: Could not read content from chapters in {drafts_dir}"
 
         if scan_repetitions is None or format_repetition_markdown is None:
-            return "Error: adk.repetition_scanner module could not be imported."
+            return "Error: forge.repetition_scanner module could not be imported."
 
         results = scan_repetitions(chapters_dict, window=window)
         return format_repetition_markdown(results, series_slug=slug)

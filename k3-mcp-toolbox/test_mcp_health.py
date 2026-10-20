@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 MCP Health Check - Verify all configured servers are operational
 """
@@ -12,11 +12,14 @@ sys.path.append(os.getcwd())
 try:
     from tools.simple_mcp_client import SimpleMCPClient
 except ImportError:
-    # Attempt to handle if run from different context, or warn user
-    pass
+    SimpleMCPClient = None
 
 
 def test_all_servers():
+    if SimpleMCPClient is None:
+        import pytest
+        pytest.skip("tools.simple_mcp_client not available in this environment")
+
     servers = ["chrome-devtools", "duckduckgo", "filesystem"]
     results = {}
 
@@ -42,7 +45,8 @@ def test_all_servers():
         if "tools" in result:
             print(f"   └─ {result['tools']} tools available")
 
-    return all(r["status"] == "✅ OK" for r in results.values())
+    all_ok = all(r["status"] == "✅ OK" for r in results.values())
+    assert all_ok, f"Some servers failed: {results}"
 
 
 if __name__ == "__main__":
@@ -55,5 +59,9 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    success = test_all_servers()
-    sys.exit(0 if success else 1)
+    try:
+        test_all_servers()
+        sys.exit(0)
+    except AssertionError:
+        sys.exit(1)
+
