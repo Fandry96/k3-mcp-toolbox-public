@@ -95,7 +95,9 @@ class MatryoshkaIndexer:
 
     def sanitize_content(self, text: str) -> str:
         # Remove binary noise / markdown images
-        text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
+        # ⚡ BOLT OPTIMIZATION: Wrap re.sub with native inclusion check to skip regex overhead when pattern is absent
+        if "![" in text:
+            text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
