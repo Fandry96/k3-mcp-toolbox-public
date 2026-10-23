@@ -207,30 +207,37 @@ class MatryoshkaIndexer:
         if len(text) <= limit:
             return [(text, f"::{base_id}")]
 
+        # ⚡ BOLT OPTIMIZATION: Use str.rfind() instead of split("\n") to avoid huge list allocations
         chunks = []
-        lines = text.split("\n")
-        current_chunk = []
-        current_len = 0
         chunk_idx = 0
+        start = 0
 
-        for line in lines:
-            line_len = len(line) + 1  # +1 for newline
-            if current_len + line_len > limit:
-                # Commit current chunk
-                if current_chunk:
-                    joined = "\n".join(current_chunk)
-                    chunks.append((joined, f"::{base_id}[{chunk_idx}]"))
-                    chunk_idx += 1
-                    current_chunk = []
-                    current_len = 0
+        while start < len(text):
+            if len(text) - start <= limit:
+                chunk_text = text[start:]
+                if chunk_text:
+                    chunks.append((chunk_text, f"::{base_id}[{chunk_idx}]"))
+                break
 
-            current_chunk.append(line)
-            current_len += line_len
+            end = start + limit
+            last_newline = text.rfind('\n', start, end)
 
-        # Flush remainder
-        if current_chunk:
-            joined = "\n".join(current_chunk)
-            chunks.append((joined, f"::{base_id}[{chunk_idx}]"))
+            # If no newline found within limit, find the NEXT newline to keep the line intact
+            if last_newline == -1 or last_newline == start:
+                next_newline = text.find('\n', start)
+                if next_newline == -1:
+                    last_newline = len(text)
+                else:
+                    last_newline = next_newline
+
+            # Original chunker did not include the newline character
+            chunk_text = text[start:last_newline]
+            if chunk_text or start == last_newline:  # Empty chunks were kept if multiple newlines exist
+                chunks.append((chunk_text, f"::{base_id}[{chunk_idx}]"))
+                chunk_idx += 1
+
+            # Move start pointer past the newline if we didn't hit the end
+            start = last_newline + 1 if last_newline < len(text) else len(text)
 
         return chunks
 
