@@ -175,12 +175,27 @@ def run_empirical_suite():
         isinstance(res_lint_abs, str) and ("Error in forge_lint:" in res_lint_abs or "Path traversal rejected" in res_lint_abs),
     )
 
-    # Clean authorized draft access: dual clean inputs (filename vs relative series path)
+    # Clean authorized draft access: dual clean inputs + normalized chXX_beatXX_*.md resolution
     lint_authorized_file = forge_lint("beat_06_no_way_2.md")
-    record_test("forge_lint authorized draft filename succeeds", "Prose Quality Lint Report" in lint_authorized_file)
+    record_test(
+        "forge_lint authorized draft filename resolves real ch08_beat06_no_way_2.md",
+        "Prose Quality Lint Report" in lint_authorized_file and "ch08_beat06_no_way_2.md" in lint_authorized_file,
+        lint_authorized_file[:160],
+    )
 
     lint_authorized_rel = forge_lint("series/hard-country/drafts/beat_06_no_way_2.md")
-    record_test("forge_lint authorized series relative path succeeds", "Prose Quality Lint Report" in lint_authorized_rel)
+    record_test(
+        "forge_lint authorized series relative path resolves real ch08_beat06_no_way_2.md",
+        "Prose Quality Lint Report" in lint_authorized_rel and "ch08_beat06_no_way_2.md" in lint_authorized_rel,
+        lint_authorized_rel[:160],
+    )
+
+    lint_beat03 = forge_lint("beat_03")
+    record_test(
+        "forge_lint bare beat_03 resolves ch03_beat03_the_shack.md instead of Raw Text",
+        "ch03_beat03_the_shack.md" in lint_beat03 and "Raw Text" not in lint_beat03,
+        lint_beat03[:160],
+    )
 
     # Empty string: fail-soft error handling
     lint_empty = forge_lint("")
@@ -277,9 +292,21 @@ def run_empirical_suite():
     drafts_dir = _resolve_series_dir("hard-country") / "drafts"
     temp_target = drafts_dir / "_test_temp_revise.md"
     try:
-        temp_target.write_text("# Test Draft\n\nOriginal draft text here for test.", encoding="utf-8")
+        temp_target.write_text(
+            "# Test Draft\n\nOriginal draft prose stays at the top.\n\n---\n\n## Director's Log\n\n### Block 1\n- **Decision:** Keep log intact\n",
+            encoding="utf-8",
+        )
         revise_success = forge_revise("_test_temp_revise.md", feedback="Clean up rhythm")
-        record_test("forge_revise successfully updates existing file", "# === K3 Forge Revision Report ===" in revise_success and "Successfully updated on disk" in revise_success)
+        updated_disk = temp_target.read_text(encoding="utf-8")
+        record_test(
+            "forge_revise successfully updates existing file and preserves trailing Director's Log",
+            "# === K3 Forge Revision Report ===" in revise_success
+            and "Successfully updated on disk" in revise_success
+            and "Original draft prose stays at the top." in updated_disk
+            and "## Director's Log" in updated_disk
+            and "Keep log intact" in updated_disk,
+            updated_disk[:220],
+        )
     finally:
         if temp_target.exists():
             temp_target.unlink()

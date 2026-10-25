@@ -100,6 +100,104 @@ def _resolve_series_dir(series_slug: Optional[str]) -> Path:
     return resolved
 
 
+def _match_existing_draft(
+    identifier: str,
+    drafts_dir: Path,
+    drafts_resolved: Path,
+) -> Optional[Path]:
+    """Resolve beat IDs ('beat_03', 'beat_06_no_way_2.md') or chapter prefixes ('ch08') to standardized chXX_beatXX_*.md files."""
+    if not drafts_dir.exists():
+        return None
+    stem = identifier.strip()
+    if stem.lower().endswith(".md"):
+        stem = stem[:-3]
+    if not stem or "/" in stem or "\\" in stem:
+        return None
+
+    authorized_files: List[Path] = []
+    for p in sorted(drafts_dir.glob("*.md")):
+        if p.name.startswith((".", "_")):
+            continue
+        try:
+            p_res = p.resolve()
+            p_res.relative_to(drafts_resolved)
+            if p_res.is_file():
+                authorized_files.append(p_res)
+        except ValueError:
+            continue
+
+    stem_lower = stem.lower()
+    # 1. Direct stem / substring match
+    for p_res in authorized_files:
+        if p_res.stem.lower() == stem_lower or stem_lower in p_res.stem.lower():
+            return p_res
+
+    # 2. Normalized beat number + optional slug suffix (e.g. beat_03 -> ch03_beat03_the_shack.md; beat_06_no_way_2 -> ch08_beat06_no_way_2.md)
+    beat_m = re.match(r"^beat_?0*(\d+)(?:_(.+))?$", stem_lower)
+    if beat_m:
+        target_num = int(beat_m.group(1))
+        suffix = (beat_m.group(2) or "").strip("_")
+        beat_candidates: List[Path] = []
+        for p_res in authorized_files:
+            fm = re.search(r"beat_?0*(\d+)(?!\d)", p_res.stem.lower())
+            if fm and int(fm.group(1)) == target_num:
+                beat_candidates.append(p_res)
+        if suffix:
+            for cand in beat_candidates:
+                if suffix in cand.stem.lower():
+                    return cand
+        if beat_candidates:
+            return beat_candidates[0]
+
+    # 3. Normalized chapter token (e.g. ch08, ch8, ch05a)
+    ch_m = re.match(r"^ch_?0*(\d+[a-z]?)(?:_.*)?$", stem_lower)
+    if ch_m:
+        target_ch = ch_m.group(1)
+        for p_res in authorized_files:
+            cm = re.match(r"^ch_?0*(\d+[a-z]?)(?:_|$)", p_res.stem.lower())
+            if cm and cm.group(1) == target_ch:
+                return p_res
+
+    return None
+
+
+def _split_draft_sections(raw_content: str) -> Tuple[str, str, str, str]:
+    """Split a draft into (header_kind, header_block, prose_body, footer_block) without confusing trailing Director's Log dividers for frontmatter."""
+    header_kind = "none"
+    header_block = ""
+    remainder = raw_content
+
+    yaml_m = re.match(r"\A(---\r?\n.*?\r?\n---)\r?\n?", raw_content, flags=re.DOTALL)
+    if yaml_m:
+        header_kind = "yaml"
+        header_block = yaml_m.group(1)
+        remainder = raw_content[yaml_m.end():]
+    elif "\n---\n" in raw_content:
+        head_cand, rest_cand = raw_content.split("\n---\n", 1)
+        head_lines = head_cand.splitlines()
+        if (
+            len(head_lines) <= 25
+            and head_cand.lstrip().startswith("#")
+            and ("- **" in head_cand or "**Series**" in head_cand or "**Word Count**" in head_cand)
+        ):
+            header_kind = "bullet"
+            header_block = head_cand
+            remainder = rest_cand
+
+    footer_block = ""
+    prose_body = remainder
+    log_m = re.search(
+        r"(\r?\n---\r?\n+\s*(?:##+\s*Director['’]s Log|<!--\s*Director['’]s Log).*|\r?\n\s*(?:##+\s*Director['’]s Log|<!--\s*Director['’]s Log).*)\Z",
+        remainder,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if log_m:
+        prose_body = remainder[:log_m.start()]
+        footer_block = log_m.group(1)
+
+    return header_kind, header_block, prose_body, footer_block
+
+
 def _resolve_draft_target(
     target: str,
     drafts_dir: Path,
@@ -175,6 +273,9 @@ def _resolve_draft_target(
         if must_exist:
             if candidate.exists() and candidate.is_file():
                 return candidate, None
+            matched_rel = _match_existing_draft(candidate.name, drafts_dir, drafts_resolved)
+            if matched_rel is not None:
+                return matched_rel, None
             if allow_raw_text:
                 return None, clean
             return None, None
@@ -197,21 +298,11 @@ def _resolve_draft_target(
         if cand.exists() and cand.is_file():
             return cand, None
 
-    # Glob search for beat IDs within drafts_dir
+    # Normalized beat/chapter search within drafts_dir (supports chXX_beatXX_*.md)
     if "/" not in clean and "\\" not in clean and drafts_dir.exists():
-        try:
-            matches = list(drafts_dir.glob(f"*{clean}*.md"))
-        except (ValueError, re.error):
-            matches = []
-
-        for matched in matches:
-            m_res = matched.resolve()
-            try:
-                m_res.relative_to(drafts_resolved)
-                if m_res.is_file():
-                    return m_res, None
-            except ValueError:
-                continue
+        matched_norm = _match_existing_draft(clean, drafts_dir, drafts_resolved)
+        if matched_norm is not None:
+            return matched_norm, None
 
     if allow_raw_text:
         return None, clean
@@ -876,7 +967,7 @@ def forge_draft(
             prompt=drafter_prompt,
             system_instruction=drafter_system,
             thinking_level="low",
-            max_output_tokens=4096,
+            max_output_tokens=16384,
         )
 
         # High-craft authentic fallback if offline or API unavailable
@@ -945,9 +1036,9 @@ def forge_draft(
         # Word count calculation
         actual_words = len(generated_prose.split())
 
-        # Determine target output file path
-        out_filename = f"{canonical_id}.md"
-        out_path = drafts_dir / out_filename
+        # Determine target output file path (reuse existing chXX_beatXX_*.md if present)
+        existing_out = _match_existing_draft(canonical_id, drafts_dir, drafts_dir.resolve())
+        out_path = existing_out if existing_out is not None else (drafts_dir / f"{canonical_id}.md")
 
         # Write output markdown draft file
         draft_content = (
@@ -1137,7 +1228,7 @@ def forge_draft(
 
 @mcp.tool()
 def forge_lint(target: str, series_slug: Optional[str] = "hard-country") -> str:
-    """Run deterministic check_prose() rules against a chapter draft or raw text to flag filter words, AI tics, and banned tropes. Use INSTEAD OF manual regex searches or python -m adk.prose_linter shell calls when linting narrative prose. Do NOT use for: 4-axis editorial scoring (use forge_critique) or code linting.
+    """Run deterministic check_prose() rules against a chapter draft or raw text to flag filter words, AI tics, and banned tropes. Use INSTEAD OF manual regex searches or python -m forge.prose_linter shell calls when linting narrative prose. Do NOT use for: 4-axis editorial scoring (use forge_critique) or code linting.
     Args:
         target: Draft path, beat ID, or raw prose text.
         series_slug: Series slug (default: 'hard-country').
@@ -1246,14 +1337,8 @@ def forge_revise(
         raw_content = target_file.read_text(encoding="utf-8")
         orig_words = len(raw_content.split())
 
-        # Separate frontmatter from prose body if separator exists
-        if "\n---\n" in raw_content:
-            frontmatter_part, prose_body = raw_content.split("\n---\n", 1)
-            has_frontmatter = True
-        else:
-            frontmatter_part = ""
-            prose_body = raw_content
-            has_frontmatter = False
+        header_kind, frontmatter_part, prose_body, footer_block = _split_draft_sections(raw_content)
+        orig_prose_words = len(prose_body.split())
 
         system_instruction = (
             "You are the Forge Reviser for the Hard Country series. "
@@ -1264,17 +1349,24 @@ def forge_revise(
         prompt = (
             f"Author Revision Feedback:\n{fb}\n\n"
             f"Original Draft Prose:\n{prose_body.strip()}\n\n"
-            "Emit the full revised scene prose."
+            "Emit the full revised scene prose without truncating or summarizing."
         )
 
         revised_text = _call_gemini(
             prompt=prompt,
             system_instruction=system_instruction,
             thinking_level="medium",
-            max_output_tokens=4096,
+            max_output_tokens=16384,
         )
 
-        if not revised_text or len(revised_text.split()) < 100:
+        if revised_text:
+            cand_words = len(revised_text.split())
+            if orig_prose_words >= 300 and cand_words < int(orig_prose_words * 0.5):
+                return (
+                    f"Error in forge_revise: Truncation guard tripped — revised output ({cand_words} words) "
+                    f"is < 50% of original prose ({orig_prose_words} words). File '{target_file}' preserved untouched."
+                )
+        if not revised_text or len(revised_text.split()) < max(5, min(100, orig_prose_words // 2)):
             # Deterministic adjustment if offline
             revised_text = prose_body.strip() + f"\n\n<!-- Revised with author note: {fb} -->"
 
@@ -1289,22 +1381,26 @@ def forge_revise(
 
         new_prose_words = len(revised_text.split())
 
-        if has_frontmatter:
-            import re as _re
-            # Update Word Count and Quality Gate in frontmatter
-            fm = _re.sub(
+        if header_kind == "yaml":
+            fm = re.sub(r"(?m)^word_count:\s*\S+", f"word_count: {new_prose_words}", frontmatter_part)
+            fm = re.sub(r"(?m)^lint_score:\s*\S+", f"lint_score: {lint_score_val}", fm)
+            assembled = f"{fm.strip()}\n\n{revised_text.strip()}"
+        elif header_kind == "bullet":
+            fm = re.sub(
                 r"- \*\*Word Count\*\*:\s*[\d,]+\s*words",
                 f"- **Word Count**: {new_prose_words:,} words",
                 frontmatter_part,
             )
-            fm = _re.sub(
+            fm = re.sub(
                 r"- \*\*Quality Gate\*\*:[^\n]+",
                 f"- **Quality Gate**: CLEAN (Lint Score: {lint_score_val}/100, Hard Violations: {hard_count})",
                 fm,
             )
-            final_content = f"{fm.strip()}\n\n---\n\n{revised_text.strip()}\n"
+            assembled = f"{fm.strip()}\n\n---\n\n{revised_text.strip()}"
         else:
-            final_content = revised_text.strip() + "\n"
+            assembled = revised_text.strip()
+
+        final_content = f"{assembled}{footer_block}\n" if footer_block else f"{assembled}\n"
 
         new_words = len(final_content.split())
         target_file.write_text(final_content, encoding="utf-8")
