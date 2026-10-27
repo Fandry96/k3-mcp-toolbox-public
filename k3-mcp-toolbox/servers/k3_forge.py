@@ -431,10 +431,11 @@ def _calculate_prose_metric_scores(
     Calculate deterministic 4-axis scores (Pacing, Tension, Voice, Continuity)
     directly from text characteristics when LLM scores are absent or partial.
     """
-    import re
     words = content.split()
     word_count = len(words)
-    sentences = [s.strip() for s in re.split(r"[.!?]+", content) if s.strip()]
+    # ⚡ BOLT OPTIMIZATION: Fast path native string operations instead of regex split.
+    normalized_content = content.replace('!', '.').replace('?', '.')
+    sentences = [s.strip() for s in normalized_content.split('.') if s.strip()]
     sentence_lengths = [len(s.split()) for s in sentences] if sentences else [0]
     avg_sentence_len = sum(sentence_lengths) / max(len(sentence_lengths), 1)
     variance = (
