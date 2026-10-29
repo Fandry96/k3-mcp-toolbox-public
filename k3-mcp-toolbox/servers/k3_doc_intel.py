@@ -96,7 +96,9 @@ def _embed_single(text: str) -> np.ndarray:
     vec = np.array(raw, dtype=np.float32)
     if TARGET_DIMENSION < vec.shape[0]:
         vec = vec[:TARGET_DIMENSION]
-    norm = np.linalg.norm(vec)
+    # ⚡ BOLT OPTIMIZATION:
+    # Use np.sqrt(np.dot) instead of np.linalg.norm for faster 1D vector norm calculation
+    norm = np.sqrt(np.dot(vec, vec))
     if norm > 0:
         vec = vec / norm
     return vec
