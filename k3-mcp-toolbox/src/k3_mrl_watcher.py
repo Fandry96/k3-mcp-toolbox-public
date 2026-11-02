@@ -77,7 +77,8 @@ class MultiPathIndexTriggerHandler(FileSystemEventHandler):
             return
 
         # Ignore changes to index files, lock files, and tmp files
-        if path.name.endswith(".pkl") or path.name.endswith(".tmp") or path.name.endswith(".lock"):
+        # ⚡ BOLT OPTIMIZATION: Use tuple in endswith for O(1) C-level evaluation instead of multiple string method calls in Python.
+        if path.name.endswith((".pkl", ".tmp", ".lock")):
             return
 
         current_time = time.time()
